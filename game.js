@@ -1,6 +1,6 @@
 // ─── Truc Valenciano · game.js ─────────────────────────────────────────────
-import { initializeApp }   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, get, set, remove, onValue, runTransaction, serverTimestamp }
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, get, set, remove, onValue, runTransaction }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -18,7 +18,8 @@ const db = getDatabase();
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const LS = { room:'truc_room', seat:'truc_seat', name:'truc_name' };
-const INACTIVITY_MS = 60 * 60 * 1000; // 60 min
+const INACTIVITY_MS = 60 * 60 * 1000;  // 60 min → borrar sala
+const TURN_SECONDS  = 30;               // segundos por turno
 
 const SUITS = {
   oros:    { label:'oros',    cls:'s-oros'    },
@@ -28,7 +29,6 @@ const SUITS = {
 };
 const SUIT_ORDER = ['oros','copas','espadas','bastos'];
 
-// SVG palos españoles
 const SUIT_SVG = {
   oros:`<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
     <circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="2" fill="rgba(176,125,16,.1)"/>
@@ -70,53 +70,60 @@ const TRICK_ORDER_GROUPS = [
   ['4_oros','4_copas','4_espadas','4_bastos']
 ];
 const TRICK_RANK = (()=>{
-  const map={}; let s=100;
-  for (const g of TRICK_ORDER_GROUPS){for(const c of g)map[c]=s;s-=10;}
-  return map;
+  const m={};let s=100;
+  for(const g of TRICK_ORDER_GROUPS){for(const c of g)m[c]=s;s-=10;}
+  return m;
 })();
 
-// ─── Audio (Web Audio API — sin archivos externos) ────────────────────────────
-let audioCtx = null;
-function getAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  return audioCtx;
+// ─── Audio ────────────────────────────────────────────────────────────────────
+let _actx=null;
+const actx=()=>{ if(!_actx)_actx=new(window.AudioContext||window.webkitAudioContext)(); return _actx; };
+function tone(freq,type='sine',dur=0.1,vol=0.15,delay=0){
+  try{
+    const c=actx(),t=c.currentTime+delay;
+    const o=c.createOscillator(),g=c.createGain();
+    o.type=type;o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+dur);
+  }catch(e){}
 }
-function playTone(freq, type='sine', dur=0.1, vol=0.18, delay=0) {
-  try {
-    const ctx=getAudio(), t=ctx.currentTime+delay;
-    const osc=ctx.createOscillator(), gain=ctx.createGain();
-    osc.type=type; osc.frequency.setValueAtTime(freq,t);
-    gain.gain.setValueAtTime(vol,t);
-    gain.gain.exponentialRampToValueAtTime(0.001,t+dur);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(t); osc.stop(t+dur);
-  } catch(e){}
-}
-function soundCard() { playTone(440,'triangle',0.08,0.15); playTone(550,'triangle',0.06,0.08,0.06); }
-function soundWin()  { [523,659,784,1047].forEach((f,i)=>playTone(f,'sine',0.15,0.18,i*0.1)); }
-function soundPoint(){ playTone(330,'sine',0.12,0.14); playTone(440,'sine',0.1,0.12,0.1); }
+const sndCard  = ()=>{ tone(440,'triangle',0.07,0.14); tone(560,'triangle',0.05,0.09,0.06); };
+const sndWin   = ()=>{ [523,659,784,1047].forEach((f,i)=>tone(f,'sine',0.14,0.17,i*0.1)); };
+const sndPoint = ()=>{ tone(330,'sine',0.11,0.13); tone(450,'sine',0.09,0.11,0.1); };
+const sndTick  = ()=>{ tone(880,'square',0.04,0.06); };
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+// ─── Session state ────────────────────────────────────────────────────────────
 let roomRef=null, roomCode=null, mySeat=null, unsubFn=null;
-let countdownTimer=null, lastHandKey=null, inactivityTimer=null;
-let prevEnvitState=null, prevTrucState=null; // para detectar ganancias
+let inactivityTimer=null;
+
+// Timers de cuenta atrás — uno por tipo para no acumular
+let startTimer=null;      // 10s inicio partida
+let betweenTimer=null;    // 5s entre manos
+let turnTimer=null;       // 30s por turno
+
+// Claves para detectar cambios de estado sin disparar múltiples veces
+let prevStateKey='';        // `status-handNumber`
+let prevTurnKey='';         // `handNumber-trickIndex-turn` para reiniciar timer de turno
+let prevBothReady=false;    // true cuando hay 2 jugadores y status=waiting primera vez
+
+// Para sonidos
+let prevEnvitState='none', prevTrucState='none';
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
 const $=id=>document.getElementById(id);
-const screenLobby=$('screenLobby'), screenGame=$('screenGame');
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
 const clone=o=>JSON.parse(JSON.stringify(o));
 const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
 const sanitize=s=>String(s||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,8);
 const normName=s=>String(s||'').trim().slice(0,24)||'Invitado';
 const other=s=>s===0?1:0;
 
-function parseCard(c){ const[n,s]=String(c).split('_');return{num:Number(n),suit:s}; }
-function cardLabel(c){ const{num,suit}=parseCard(c);return`${num} de ${SUITS[suit].label}`; }
-function trickRank(c){ return TRICK_RANK[c]??0; }
-function cmpTrick(a,b){ const d=trickRank(a)-trickRank(b);return d>0?1:d<0?-1:0; }
-function envitVal(c){ const n=parseCard(c).num;return n>=10?0:n; }
+function parseCard(c){const[n,s]=String(c).split('_');return{num:Number(n),suit:s};}
+function cardLabel(c){const{num,suit}=parseCard(c);return`${num} de ${SUITS[suit].label}`;}
+function trickRank(c){return TRICK_RANK[c]??0;}
+function cmpTrick(a,b){const d=trickRank(a)-trickRank(b);return d>0?1:d<0?-1:0;}
+function envitVal(c){const n=parseCard(c).num;return n>=10?0:n;}
 function bestEnvit(cards){
   if(!cards||cards.length!==3)return 0;
   let best=0;
@@ -126,8 +133,7 @@ function bestEnvit(cards){
   }
   return best>0?best:Math.max(...cards.map(envitVal));
 }
-function pName(state,seat){ return state?.players?.[seat]?.name||`Jugador ${seat}`; }
-
+function pName(state,seat){return state?.players?.[seat]?.name||`Jugador ${seat}`;}
 function pushLog(state,text){
   state.logs=state.logs||[];
   state.logs.unshift({text,at:Date.now()});
@@ -153,20 +159,21 @@ function saveLS(name,code,seat){
   localStorage.setItem(LS.seat,String(seat));
 }
 
-// ─── Inactivity cleanup ───────────────────────────────────────────────────────
-function resetInactivity(state){
-  if(inactivityTimer)clearTimeout(inactivityTimer);
+// ─── Inactivity ───────────────────────────────────────────────────────────────
+function resetInactivity(){
+  clearTimeout(inactivityTimer);
   inactivityTimer=setTimeout(async()=>{
-    if(roomRef) try{ await remove(roomRef); }catch(e){}
-    localStorage.removeItem(LS.room); localStorage.removeItem(LS.seat);
+    if(roomRef)try{await remove(roomRef);}catch(e){}
+    localStorage.removeItem(LS.room);localStorage.removeItem(LS.seat);
     location.reload();
-  }, INACTIVITY_MS);
+  },INACTIVITY_MS);
 }
 
 // ─── Default state ────────────────────────────────────────────────────────────
 function defaultState(){
-  return{version:1,status:'waiting',roomCode:'',players:{0:null,1:null},
-    scores:{0:0,1:0},handNumber:0,mano:0,turn:0,hand:null,logs:[],winner:null};
+  return{version:1,status:'waiting',roomCode:'',
+    players:{0:null,1:null},scores:{0:0,1:0},
+    handNumber:0,mano:0,turn:0,hand:null,logs:[],winner:null};
 }
 
 // ─── Deck ─────────────────────────────────────────────────────────────────────
@@ -176,7 +183,9 @@ function buildDeck(){
   return cards;
 }
 function shuffle(arr){
-  for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];
+  }
   return arr;
 }
 
@@ -198,7 +207,7 @@ function makeHand(mano){
 // ─── Game logic ───────────────────────────────────────────────────────────────
 function handWinner(state){
   const h=state.hand,w=h.trickWins||{0:0,1:0};
-  if(w[0]>=2)return 0; if(w[1]>=2)return 1;
+  if(w[0]>=2)return 0;if(w[1]>=2)return 1;
   const hist=h.trickHistory||[];
   if(hist.length<3)return state.mano;
   const r1=hist[0]?.winner??null,r2=hist[1]?.winner??null,r3=hist[2]?.winner??null;
@@ -208,7 +217,7 @@ function handWinner(state){
 }
 
 function applyHandEnd(state,reason){
-  const h=state.hand; if(!h)return;
+  const h=state.hand;if(!h)return;
   const finish=()=>{
     if(state.scores[0]>=12||state.scores[1]>=12){
       const w=state.scores[0]>state.scores[1]?0:state.scores[1]>state.scores[0]?1:state.mano;
@@ -264,7 +273,7 @@ async function mutate(fn){
     if(!cur)return cur;
     const next=clone(cur);
     if(!next.state)next.state=defaultState();
-    next.lastActivity=Date.now(); // para limpieza por inactividad
+    next.lastActivity=Date.now();
     const ok=fn(next.state);
     if(ok===false)return;
     return next;
@@ -277,7 +286,8 @@ async function dealHand(){
     if(!state.players?.[0]||!state.players?.[1])return false;
     if(state.status==='game_over')return false;
     if(state.hand&&state.hand.status==='in_progress')return false;
-    state.hand=makeHand(state.mano);state.status='playing';
+    state.hand=makeHand(state.mano);
+    state.status='playing';
     pushLog(state,`Nueva mano #${state.handNumber+1}. Mano: Jugador ${state.mano}.`);
     return true;
   });
@@ -320,7 +330,7 @@ async function startOffer(kind){
     if(h.turn!==mySeat||h.pendingOffer)return false;
     if(kind==='envit'){
       if(!(h.mode==='normal'||h.mode==='respond_truc'))return false;
-      if(!h.envitAvailable)return false;
+      if(!h.envitAvailable||h.envit.state!=='none')return false;
       h.resume={mode:h.mode,turn:h.turn};
       h.pendingOffer={kind:'envit',level:2,by:mySeat,to:other(mySeat)};
       h.mode='respond_envit';h.turn=other(mySeat);
@@ -404,28 +414,126 @@ async function respondTruc(choice){
   });
 }
 
-// ─── Countdown ────────────────────────────────────────────────────────────────
-function startCountdown(){
-  if(countdownTimer!==null)return;
-  let n=5;
-  const overlay=$('countdownOverlay'),num=$('countdownNum');
-  overlay.classList.remove('hidden');num.textContent=n;
-  countdownTimer=setInterval(async()=>{
+// ─── Timeout: jugador pierde su mano por inacción ──────────────────────────────
+async function timeoutCurrentTurn(){
+  // El jugador cuyo turno sea mySeat pierde la baza: jugamos la primera carta disponible
+  await mutate(state=>{
+    const h=state.hand;
+    if(!h||state.status!=='playing'||h.status!=='in_progress')return false;
+    if(h.turn!==mySeat)return false;
+    // Si hay oferta pendiente que nos corresponde responder, rechazamos
+    if(h.pendingOffer&&h.pendingOffer.to===mySeat){
+      if(h.pendingOffer.kind==='envit'){
+        h.envit={state:'rejected',caller:h.pendingOffer.by,responder:mySeat,acceptedLevel:0,acceptedBy:null};
+        h.scoreAwards[h.pendingOffer.by]+=1;h.envitAvailable=false;
+        pushLog(state,`Tiempo. Envit rechazado automáticamente.`);
+        resumeOffer(state);return true;
+      }
+      if(h.pendingOffer.kind==='truc'){
+        h.truc={state:'rejected',caller:h.pendingOffer.by,responder:mySeat,acceptedLevel:0,acceptedBy:null};
+        h.scoreAwards[h.pendingOffer.by]+=1;h.envitAvailable=false;
+        pushLog(state,`Tiempo. Truc rechazado automáticamente.`);
+        applyHandEnd(state,'No vull al truc (tiempo).');return true;
+      }
+    }
+    // Si no hay oferta, jugamos la primera carta
+    if(h.mode==='normal'){
+      const mine=h.hands?.[mySeat]||[];
+      if(!mine.length)return false;
+      const card=mine[0];
+      h.hands[mySeat]=mine.slice(1);
+      h.currentTrick.cards[mySeat]=card;
+      h.currentTrick.playedBy.push(mySeat);
+      h.envitAvailable=false;
+      pushLog(state,`Jugador ${mySeat} juega ${cardLabel(card)} (tiempo).`);
+      const oth=other(mySeat);
+      if(!h.currentTrick.cards[oth]){h.turn=oth;h.envitAvailable=true;return true;}
+      resolveTrick(state);return true;
+    }
+    return false;
+  });
+}
+
+// ─── Timer de turno ───────────────────────────────────────────────────────────
+function stopTurnTimer(){
+  clearInterval(turnTimer);turnTimer=null;
+  const fill=$('turnTimerFill');
+  if(fill){fill.style.width='100%';fill.classList.remove('urgent','timer-flash');}
+}
+
+function startTurnTimer(isMyTurn){
+  stopTurnTimer();
+  const fill=$('turnTimerFill');
+  if(!fill)return;
+  fill.classList.remove('urgent','timer-flash');
+  if(!isMyTurn){fill.style.width='0%';return;}
+
+  let remaining=TURN_SECONDS;
+  fill.style.transition='none';
+  fill.style.width='100%';
+
+  // pequeño delay para que el browser pinte el 100% antes de empezar
+  setTimeout(()=>{
+    fill.style.transition=`width 1s linear`;
+    turnTimer=setInterval(()=>{
+      remaining--;
+      const pct=Math.max(0,(remaining/TURN_SECONDS)*100);
+      fill.style.width=pct+'%';
+      if(remaining<=10){fill.classList.add('urgent');}
+      if(remaining<=5){sndTick();}
+      if(remaining<=0){
+        stopTurnTimer();
+        timeoutCurrentTurn();
+      }
+    },1000);
+  },50);
+}
+
+// ─── Countdown overlays ───────────────────────────────────────────────────────
+function stopAllCountdowns(){
+  clearInterval(startTimer);  startTimer=null;
+  clearInterval(betweenTimer);betweenTimer=null;
+  $('startOverlay').classList.add('hidden');
+  $('countdownOverlay').classList.add('hidden');
+}
+
+// Cuenta atrás de INICIO de partida (10s) — se lanza cuando ambos jugadores están listos
+// y status es 'waiting' y handNumber===0
+function runStartCountdown(state){
+  stopAllCountdowns();
+  const overlay=$('startOverlay'), num=$('startNum');
+  $('startPlayers').textContent=`${pName(state,0)} vs ${pName(state,1)}`;
+  overlay.classList.remove('hidden');
+  let n=10; num.textContent=n;
+  startTimer=setInterval(async()=>{
     n--;
-    if(n>0){num.textContent=n;}
+    if(n>0){ num.textContent=n; sndTick(); }
     else{
-      clearInterval(countdownTimer);countdownTimer=null;
+      clearInterval(startTimer);startTimer=null;
       overlay.classList.add('hidden');
       if(mySeat===0)await dealHand();
     }
   },1000);
 }
-function cancelCountdown(){
-  if(countdownTimer!==null){clearInterval(countdownTimer);countdownTimer=null;}
-  $('countdownOverlay').classList.add('hidden');
+
+// Cuenta atrás ENTRE MANOS (5s)
+function runBetweenCountdown(){
+  stopAllCountdowns();
+  const overlay=$('countdownOverlay'), num=$('countdownNum');
+  overlay.classList.remove('hidden');
+  let n=5; num.textContent=n;
+  betweenTimer=setInterval(async()=>{
+    n--;
+    if(n>0){ num.textContent=n; sndTick(); }
+    else{
+      clearInterval(betweenTimer);betweenTimer=null;
+      overlay.classList.add('hidden');
+      if(mySeat===0)await dealHand();
+    }
+  },1000);
 }
 
-// ─── Card element builders ────────────────────────────────────────────────────
+// ─── Card builders ────────────────────────────────────────────────────────────
 function svgEl(suit,size){
   const tmp=document.createElement('span');
   tmp.innerHTML=SUIT_SVG[suit]||'';
@@ -435,22 +543,18 @@ function svgEl(suit,size){
 }
 
 function buildCardEl(card){
-  const {num,suit}=parseCard(card);
+  const{num,suit}=parseCard(card);
   const el=document.createElement('div');
   el.className=`playing-card ${SUITS[suit].cls}`;
-
   const top=document.createElement('div');top.className='pc-top';
-  const rankT=document.createElement('span');rankT.className='pc-rank';rankT.textContent=num;
-  top.appendChild(rankT);top.appendChild(svgEl(suit,13));
-
-  const center=document.createElement('div');center.className='pc-center';
-  center.appendChild(svgEl(suit,30));
-
+  const rT=document.createElement('span');rT.className='pc-rank';rT.textContent=num;
+  top.appendChild(rT);top.appendChild(svgEl(suit,13));
+  const ctr=document.createElement('div');ctr.className='pc-center';
+  ctr.appendChild(svgEl(suit,30));
   const bot=document.createElement('div');bot.className='pc-bot';
-  const rankB=document.createElement('span');rankB.className='pc-rank';rankB.textContent=num;
-  bot.appendChild(rankB);bot.appendChild(svgEl(suit,13));
-
-  el.appendChild(top);el.appendChild(center);el.appendChild(bot);
+  const rB=document.createElement('span');rB.className='pc-rank';rB.textContent=num;
+  bot.appendChild(rB);bot.appendChild(svgEl(suit,13));
+  el.appendChild(top);el.appendChild(ctr);el.appendChild(bot);
   return el;
 }
 
@@ -458,57 +562,50 @@ function buildBackEl(){
   const el=document.createElement('div');el.className='card-back';return el;
 }
 
-// ─── Card flying animation ────────────────────────────────────────────────────
-function animateCardPlay(cardEl, onDone){
-  // Obtener posición del slot de la mesa para mi asiento
-  const slot=document.getElementById(`trickSlot${mySeat}`);
+// ─── Card fly animation ───────────────────────────────────────────────────────
+function animateCardPlay(cardEl,card,onDone){
+  const slot=$(`trickSlot${mySeat}`);
   const from=cardEl.getBoundingClientRect();
-  const to=slot?slot.getBoundingClientRect():{left:window.innerWidth/2,top:window.innerHeight/2};
-
-  const flying=buildCardEl(cardEl.dataset.card||'1_oros');
-  flying.className+=' card-flying';
-  flying.style.left=from.left+'px';
-  flying.style.top=from.top+'px';
-  flying.style.width=from.width+'px';
-  flying.style.height=from.height+'px';
+  const to=slot?slot.getBoundingClientRect():{left:window.innerWidth/2,top:window.innerHeight/2,width:80,height:114};
+  const flying=buildCardEl(card);
+  flying.classList.add('card-flying');
+  flying.style.cssText=`left:${from.left}px;top:${from.top}px;width:${from.width}px;height:${from.height}px;position:fixed;pointer-events:none;z-index:200;`;
   const tx=(to.left+to.width/2)-(from.left+from.width/2);
   const ty=(to.top+to.height/2)-(from.top+from.height/2);
   flying.style.setProperty('--tx',tx+'px');
   flying.style.setProperty('--ty',ty+'px');
+  flying.style.setProperty('--rot',(Math.random()*10-5)+'deg');
   document.body.appendChild(flying);
-  flying.addEventListener('animationend',()=>{ flying.remove(); if(onDone)onDone(); },{once:true});
+  flying.addEventListener('animationend',()=>{flying.remove();if(onDone)onDone();},{once:true});
 }
 
 // ─── Render functions ─────────────────────────────────────────────────────────
 function renderRivalCards(cards){
-  const zone=$('rivalCards');
-  zone.innerHTML='';
+  const zone=$('rivalCards');zone.innerHTML='';
   const count=cards?cards.length:0;
   zone.setAttribute('data-count',count);
   for(let i=0;i<count;i++){
     const slot=document.createElement('div');slot.className='rival-card-slot deal-anim';
-    slot.appendChild(buildBackEl());
-    zone.appendChild(slot);
+    slot.appendChild(buildBackEl());zone.appendChild(slot);
   }
 }
 
 function renderMyCards(state){
-  const hand=state.hand;
-  const zone=$('myCards');
-  zone.innerHTML='';
+  const hand=state.hand,zone=$('myCards');zone.innerHTML='';
   if(!hand)return;
   const cards=hand.hands?.[mySeat]||[];
   const isMyTurn=hand.turn===mySeat&&hand.mode==='normal'&&!hand.pendingOffer&&state.status==='playing';
   cards.forEach(card=>{
     const wrap=document.createElement('div');wrap.className='my-card-wrap deal-anim';
     const cardEl=buildCardEl(card);
-    cardEl.dataset.card=card;
     wrap.appendChild(cardEl);
     if(isMyTurn){
       wrap.classList.add('playable');
       wrap.addEventListener('click',()=>{
-        soundCard();
-        animateCardPlay(cardEl,()=>playCard(card));
+        if(!wrap.classList.contains('playable'))return;
+        wrap.classList.remove('playable'); // evitar doble click
+        sndCard();
+        animateCardPlay(cardEl,card,()=>playCard(card));
       },{once:true});
     }
     zone.appendChild(wrap);
@@ -517,27 +614,21 @@ function renderMyCards(state){
 
 function renderTrick(state){
   const hand=state.hand;
-  const slot0=$('trickSlot0'),slot1=$('trickSlot1');
-  slot0.innerHTML='';slot1.innerHTML='';
+  $('trickSlot0').innerHTML='';$('trickSlot1').innerHTML='';
   if(!hand)return;
   const cards=hand.currentTrick?.cards||{};
   [0,1].forEach(seat=>{
-    const slot=seat===0?slot0:slot1;
     if(cards[seat]){
-      const el=buildCardEl(cards[seat]);
-      el.classList.add('land-anim');
-      slot.appendChild(el);
+      const el=buildCardEl(cards[seat]);el.classList.add('land-anim');
+      $(`trickSlot${seat}`).appendChild(el);
     }
   });
-  // History dots
-  const info=$('centerInfo');
-  info.innerHTML='';
+  const info=$('centerInfo');info.innerHTML='';
   const hist=hand.trickHistory||[];
   if(hist.length){
     const dots=document.createElement('div');dots.className='trick-history-dots';
     hist.forEach(t=>{
-      const d=document.createElement('div');
-      d.className='trick-dot';
+      const d=document.createElement('div');d.className='trick-dot';
       if(t.winner===null)d.classList.add('draw');
       else if(t.winner===mySeat)d.classList.add('won');
       else d.classList.add('lost');
@@ -545,48 +636,36 @@ function renderTrick(state){
     });
     info.appendChild(dots);
   }
-  if(hand.pendingOffer){
-    const msg=document.createElement('div');
-    msg.style.marginTop='8px';
-    msg.textContent=descOffer(hand.pendingOffer);
-    info.appendChild(msg);
-  }
 }
 
 function renderActions(state){
   const hand=state.hand;
   const envitBtn=$('envitBtn'),trucBtn=$('trucBtn'),mazoBtn=$('mazoBtn');
   const respArea=$('responseArea'),offerMsg=$('offerMsg');
+  respArea.innerHTML='';respArea.classList.add('hidden');offerMsg.classList.add('hidden');
 
-  respArea.innerHTML='';respArea.classList.add('hidden');
-  offerMsg.classList.add('hidden');
-
-  if(!hand||state.status!=='playing'||hand.status!=='in_progress'){
+  const isPlaying=state.status==='playing'&&hand?.status==='in_progress';
+  if(!isPlaying){
     envitBtn.disabled=true;trucBtn.disabled=true;mazoBtn.disabled=true;
+    $('statusMsg').textContent=state.status==='waiting'?'Esperando…':state.status==='game_over'?'Partida terminada':'';
     return;
   }
-
   const myTurn=hand.turn===mySeat;
   const normal=hand.mode==='normal';
-
-  // Envidar: disabled si no es tu turno, o ya se jugó el envit, o hay oferta pendiente (no envit)
   const envitDone=hand.envit.state!=='none';
+
   envitBtn.disabled=!myTurn||!hand.envitAvailable||envitDone||!!hand.pendingOffer
     ||(hand.mode!=='normal'&&hand.mode!=='respond_truc');
-
   trucBtn.disabled=!myTurn||!normal||!!hand.pendingOffer;
   mazoBtn.disabled=!myTurn||!normal||!!hand.pendingOffer
     ||hand.trickIndex!==0||Object.keys(hand.currentTrick?.cards||{}).length!==0;
 
-  // Respuestas
   if(hand.pendingOffer&&hand.turn===mySeat){
-    offerMsg.textContent=descOffer(hand.pendingOffer);
-    offerMsg.classList.remove('hidden');
+    offerMsg.textContent=descOffer(hand.pendingOffer);offerMsg.classList.remove('hidden');
     respArea.classList.remove('hidden');
     const add=(txt,cls,fn)=>{
       const b=document.createElement('button');b.textContent=txt;
-      b.className=`abtn ${cls}`;b.addEventListener('click',fn);
-      respArea.appendChild(b);
+      b.className=`abtn ${cls}`;b.addEventListener('click',fn);respArea.appendChild(b);
     };
     if(hand.pendingOffer.kind==='envit'){
       add('Vull','abtn-green',()=>respondEnvit('vull'));
@@ -602,25 +681,20 @@ function renderActions(state){
     }
   }
 
-  // Status message
   const sm=$('statusMsg');
-  if(hand.pendingOffer&&hand.turn!==mySeat){
-    sm.textContent=`Esperando respuesta de ${pName(state,hand.turn)}…`;
-  } else if(!myTurn){
-    sm.textContent=`Turno de ${pName(state,hand.turn)}`;
-  } else if(normal&&!hand.pendingOffer){
-    sm.textContent='Tu turno — elige una carta o una acción';
-  } else {
-    sm.textContent='';
-  }
+  if(!myTurn&&hand.pendingOffer)sm.textContent=`Esperando a ${pName(state,hand.turn)}…`;
+  else if(!myTurn)sm.textContent=`Turno de ${pName(state,hand.turn)}`;
+  else if(normal&&!hand.pendingOffer)sm.textContent='Tu turno — elige carta o acción';
+  else sm.textContent='';
 }
 
 function renderHUD(state){
   $('hudRoom').textContent=`Sala ${state.roomCode||roomCode||'—'}`;
-  $('hudSeat').textContent=`Jugador ${mySeat===null?'—':mySeat} · ${pName(state,mySeat)}`;
+  $('hudSeat').textContent=`Jugador ${mySeat===null?'—':mySeat}`;
   $('hudScore0').textContent=String(state.scores?.[0]??0);
   $('hudScore1').textContent=String(state.scores?.[1]??0);
-  $('hudState').textContent=state.status==='waiting'?'Esperando':state.status==='playing'?'En juego':'Terminada';
+  $('hudName0').textContent=pName(state,0);
+  $('hudName1').textContent=pName(state,1);
   $('siMano').textContent=`Jugador ${state.mano}${state.mano===mySeat?' (tú)':''}`;
   $('siHand').textContent=String(state.handNumber??0);
   $('siBazas').textContent=state.hand?`${state.hand.trickWins[0]}-${state.hand.trickWins[1]}`:'0-0';
@@ -629,37 +703,31 @@ function renderHUD(state){
 function renderLog(state){
   const area=$('logArea');area.innerHTML='';
   (state.logs||[]).slice(0,15).forEach(item=>{
-    const d=document.createElement('div');d.className='log-entry';d.textContent=item.text;
-    area.appendChild(d);
+    const d=document.createElement('div');d.className='log-entry';d.textContent=item.text;area.appendChild(d);
   });
 }
 
 function renderNames(state){
-  const rivalSeat=other(mySeat);
   $('myName').textContent=pName(state,mySeat);
-  $('rivalName').textContent=pName(state,rivalSeat);
+  $('rivalName').textContent=pName(state,other(mySeat));
 }
 
-// ─── Sound detection on state change ─────────────────────────────────────────
+// ─── Sound detector ───────────────────────────────────────────────────────────
 function detectSounds(state){
   const h=state.hand;
   if(!h)return;
-  if(h.envit.state==='accepted'&&prevEnvitState!=='accepted'){
-    // Alguien aceptó el envit
-    if(h.envit.acceptedBy===mySeat)soundPoint();
-  }
-  if(h.truc.state==='accepted'&&prevTrucState!=='accepted'){
-    if(h.truc.acceptedBy===mySeat)soundPoint();
-  }
-  prevEnvitState=h.envit.state;
-  prevTrucState=h.truc.state;
+  if(h.envit.state==='accepted'&&prevEnvitState!=='accepted'){sndPoint();}
+  if(h.truc.state==='accepted'&&prevTrucState!=='accepted'){sndPoint();}
+  prevEnvitState=h.envit.state||'none';
+  prevTrucState=h.truc.state||'none';
 }
 
-// ─── Main render ──────────────────────────────────────────────────────────────
+// ─── Main render — called on every Firebase update ────────────────────────────
 function renderAll(room){
   const state=room?.state||defaultState();
-  resetInactivity(state);
+  resetInactivity();
   detectSounds(state);
+
   renderHUD(state);
   renderNames(state);
   renderRivalCards(state.hand?.hands?.[other(mySeat)]||[]);
@@ -668,32 +736,54 @@ function renderAll(room){
   renderActions(state);
   renderLog(state);
 
-  // Game over overlay
-  const goOverlay=$('gameOverOverlay');
+  // ── Lógica de cuentas atrás y timer de turno ──────────────────────────────
+
+  const bothReady=!!(state.players?.[0]&&state.players?.[1]);
+  const stateKey=`${state.status}-${state.handNumber}`;
+  const hand=state.hand;
+
   if(state.status==='game_over'){
-    goOverlay.classList.remove('hidden');
+    stopAllCountdowns();
+    stopTurnTimer();
+    $('gameOverOverlay').classList.remove('hidden');
     $('goWinner').textContent=pName(state,state.winner)+' gana';
     $('goScore').textContent=`${state.scores[0]} – ${state.scores[1]}`;
-    soundWin();
-    cancelCountdown();
-  } else {
-    goOverlay.classList.add('hidden');
+    sndWin();
+    prevStateKey=stateKey;
+    return;
   }
 
-  // Countdown entre manos
-  const handKey=`${state.status}-${state.handNumber}`;
-  if(state.status==='waiting'&&state.players?.[0]&&state.players?.[1]){
-    if(lastHandKey!==null&&lastHandKey!==handKey){startCountdown();}
-  } else {
-    if(state.status==='playing')cancelCountdown();
+  $('gameOverOverlay').classList.add('hidden');
+
+  if(state.status==='waiting'&&bothReady){
+    if(stateKey!==prevStateKey){
+      // Primera vez (handNumber===0 con status waiting + 2 jugadores) → inicio de partida
+      if(state.handNumber===0&&!startTimer&&!betweenTimer){
+        runStartCountdown(state);
+      } else if(state.handNumber>0){
+        // Entre manos
+        runBetweenCountdown();
+      }
+    }
+    stopTurnTimer();
+  } else if(state.status==='playing'&&hand){
+    stopAllCountdowns();
+    // Timer de turno: reiniciar si cambió el turno o la baza
+    const turnKey=`${state.handNumber}-${hand.trickIndex}-${hand.turn}-${hand.mode}`;
+    if(turnKey!==prevTurnKey){
+      const isMyTurn=hand.turn===mySeat&&hand.status==='in_progress';
+      startTurnTimer(isMyTurn);
+      prevTurnKey=turnKey;
+    }
   }
-  lastHandKey=handKey;
+
+  prevStateKey=stateKey;
 }
 
 // ─── Room management ──────────────────────────────────────────────────────────
 function goToGame(){
-  screenLobby.classList.add('hidden');
-  screenGame.classList.remove('hidden');
+  $('screenLobby').classList.add('hidden');
+  $('screenGame').classList.remove('hidden');
 }
 
 function startSession(code){
@@ -718,7 +808,7 @@ async function createRoom(){
   init.logs=[{text:`Sala creada por ${name}.`,at:Date.now()}];
   await set(r,{meta:{createdAt:Date.now(),roomCode:code},state:init,lastActivity:Date.now()});
   mySeat=0;saveLS(name,code,0);$('roomInput').value=code;
-  setLobbyMsg(`Sala ${code} creada. Comparte el código.`,'good');
+  setLobbyMsg(`Sala ${code} creada.`,'good');
   startSession(code);
 }
 
@@ -731,26 +821,24 @@ async function joinRoom(){
     if(!cur)return cur;
     if(!cur.state)cur.state=defaultState();
     const st=cur.state;
-    if(st.players?.[0]&&st.players?.[1])return cur; // llena
+    if(st.players?.[0]&&st.players?.[1])return cur;
     if(!st.players[0]){st.players[0]={name,clientId:uid()};pushLog(st,`${name} entra como Jugador 0.`);}
     else{st.players[1]={name,clientId:uid()};pushLog(st,`${name} entra como Jugador 1.`);}
-    cur.lastActivity=Date.now();
-    return cur;
+    cur.lastActivity=Date.now();return cur;
   },{applyLocally:false});
   if(!result.committed){setLobbyMsg('No se pudo entrar. Sala llena o inexistente.','err');return;}
   const fs=result.snapshot.val()?.state;
   if(!fs){setLobbyMsg('Sala no encontrada.','err');return;}
-  // Determinar asiento desde resultado final
   if(fs.players?.[1]?.name===name&&fs.players?.[0]?.name!==name)mySeat=1;
   else if(fs.players?.[0]?.name===name)mySeat=0;
   else mySeat=1;
   saveLS(name,code,mySeat);
-  setLobbyMsg(`Unido a sala ${code} como Jugador ${mySeat}.`,'good');
+  setLobbyMsg(`Unido como Jugador ${mySeat}.`,'good');
   startSession(code);
 }
 
 async function leaveRoom(){
-  cancelCountdown();
+  stopAllCountdowns();stopTurnTimer();
   if(roomRef&&mySeat!==null){
     try{await remove(ref(db,`rooms/${roomCode}/state/players/${mySeat}`));}catch(e){}
   }
@@ -762,6 +850,7 @@ async function leaveRoom(){
 $('createBtn').addEventListener('click',createRoom);
 $('joinBtn').addEventListener('click',joinRoom);
 $('leaveBtn').addEventListener('click',leaveRoom);
+$('goLeaveBtn').addEventListener('click',leaveRoom);
 $('envitBtn').addEventListener('click',()=>startOffer('envit'));
 $('trucBtn').addEventListener('click',()=>startOffer('truc'));
 $('mazoBtn').addEventListener('click',goMazo);
@@ -769,16 +858,13 @@ $('logToggle').addEventListener('click',()=>{
   const b=$('logBody');b.classList.toggle('hidden');
   $('logToggle').textContent=b.classList.contains('hidden')?'▸ Registro':'▾ Registro';
 });
-// El botón Repartir manual (por si acaso)
-// Ya no está en el HTML nuevo, pero si lo necesitas:
-// $('dealBtn')?.addEventListener('click',dealHand);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 loadLS();
 const savedRoom=localStorage.getItem(LS.room);
 if(savedRoom){
   roomCode=sanitize(savedRoom);$('roomInput').value=roomCode;
-  const savedSeat=localStorage.getItem(LS.seat);
-  if(savedSeat!==null)mySeat=Number(savedSeat);
+  const ss=localStorage.getItem(LS.seat);
+  if(ss!==null)mySeat=Number(ss);
   startSession(roomCode);
 }
