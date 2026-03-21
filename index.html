@@ -14,7 +14,6 @@
 ═══════════════════════════════════════ -->
 <div id="screenLobby" class="screen">
   <div class="lobby-wrap">
-
     <div class="lobby-header">
       <div class="lobby-suits">
         <span class="ls oros">◉</span>
@@ -25,7 +24,6 @@
       <h1>Truc <span class="hi">Valenciano</span></h1>
       <p class="lobby-sub">Prototipo 1 vs 1</p>
     </div>
-
     <div class="lobby-card">
       <div class="lfield">
         <label for="nameInput">Tu nombre</label>
@@ -41,14 +39,12 @@
       </div>
       <div id="lobbyMsg" class="lobby-msg"></div>
     </div>
-
     <div class="lobby-debug">
       <label class="chk-line">
         <input id="debugReveal" type="checkbox" />
         <span>Modo prueba (ver ambas manos)</span>
       </label>
     </div>
-
   </div>
 </div>
 
@@ -75,21 +71,18 @@
     </div>
   </div>
 
-  <!-- Barra de timer de turno -->
-  <div id="turnTimerBar">
-    <div id="turnTimerFill"></div>
-  </div>
+  <!-- Barra timer de turno -->
+  <div id="turnTimerBar"><div id="turnTimerFill"></div></div>
 
   <!-- MESA -->
   <div id="table">
-
-    <!-- Rival (arriba) -->
+    <!-- Rival arriba -->
     <div id="rivalZone">
       <div id="rivalName" class="player-name">—</div>
       <div id="rivalCards" class="rival-cards" data-count="0"></div>
     </div>
 
-    <!-- Centro: cartas jugadas + historial -->
+    <!-- Centro -->
     <div id="centerZone">
       <div class="trick-area">
         <div class="trick-slot" id="trickSlot0"></div>
@@ -99,64 +92,68 @@
       <div id="centerInfo" class="center-info"></div>
     </div>
 
-    <!-- Mi zona (abajo) -->
+    <!-- Mi zona abajo -->
     <div id="myZone">
       <div id="myCards" class="my-cards"></div>
-      <div id="myName"  class="player-name">—</div>
+      <div id="myName" class="player-name">—</div>
     </div>
-
   </div>
 
-  <!-- Info lateral derecha -->
+  <!-- Info lateral derecha (juego) -->
   <div id="sideInfo">
-    <div class="si-block">
-      <div class="si-lbl">Mano</div>
-      <div id="siMano">—</div>
-    </div>
-    <div class="si-block">
-      <div class="si-lbl">Ronda</div>
-      <div id="siHand">0</div>
-    </div>
-    <div class="si-block">
-      <div class="si-lbl">Bazas</div>
-      <div id="siBazas">0-0</div>
-    </div>
+    <div class="si-block"><div class="si-lbl">Mano</div><div id="siMano">—</div></div>
+    <div class="si-block"><div class="si-lbl">Ronda</div><div id="siHand">0</div></div>
+    <div class="si-block"><div class="si-lbl">Bazas</div><div id="siBazas">0-0</div></div>
   </div>
 
-  <!-- Registro colapsable (izquierda) -->
+  <!-- Registro izquierda -->
   <div id="logPanel">
     <div id="logToggle" class="log-toggle">▸ Registro</div>
-    <div id="logBody" class="log-body hidden">
-      <div id="logArea"></div>
-    </div>
+    <div id="logBody" class="log-body hidden"><div id="logArea"></div></div>
   </div>
 
-  <!-- PANEL DE ACCIONES (inferior) -->
+  <!-- PANEL ACCIONES inferior -->
   <div id="actionPanel">
     <div id="offerMsg"    class="offer-msg hidden"></div>
     <div id="actionBtns" class="action-btns">
-      <button id="envitBtn" class="abtn abtn-green">Envidar</button>
-      <button id="trucBtn"  class="abtn abtn-gold">Trucar</button>
-      <button id="mazoBtn"  class="abtn abtn-red">Ir al mazo</button>
+      <button id="envitBtn" class="abtn abtn-green" disabled>Envidar</button>
+      <button id="trucBtn"  class="abtn abtn-gold"  disabled>Trucar</button>
+      <button id="mazoBtn"  class="abtn abtn-red"   disabled>Ir al mazo</button>
     </div>
     <div id="responseArea" class="response-area hidden"></div>
-    <div id="statusMsg"    class="status-msg"></div>
+    <div id="statusMsg"    class="status-msg">Esperando al segundo jugador…</div>
   </div>
 
+  <!-- ── CHAT ── -->
+  <div id="chatPanel">
+    <div id="chatToggle" class="chat-toggle">
+      💬 Chat <span id="chatBadge" class="chat-badge hidden">!</span>
+    </div>
+    <div id="chatBox" class="chat-box hidden">
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chatInput" type="text" placeholder="Escribe…" maxlength="120" autocomplete="off" />
+        <button id="chatSend" class="chat-send">↑</button>
+      </div>
+    </div>
+  </div>
 
-  <!-- ── OVERLAY: INICIO DE PARTIDA (10 s) ── -->
-  <div id="startOverlay" class="overlay hidden">
-    <div class="overlay-card start-card">
+  <!-- ── OVERLAY: SALA EN ESPERA (host ve botón de inicio) ── -->
+  <div id="waitingOverlay" class="overlay hidden">
+    <div class="overlay-card waiting-card">
       <div class="ov-suits">
         <span class="ls oros">◉</span>
         <span class="ls copas">♆</span>
         <span class="ls espadas">✦</span>
         <span class="ls bastos">⊕</span>
       </div>
-      <div class="ov-title">¡Comienza la partida!</div>
-      <div id="startPlayers" class="ov-players">— vs —</div>
-      <div id="startNum" class="ov-num">10</div>
-      <div class="ov-label">La partida empieza en…</div>
+      <div class="ov-title">Sala creada</div>
+      <div id="waitingCode"   class="waiting-code">—</div>
+      <div id="waitingStatus" class="waiting-status">Esperando al segundo jugador…</div>
+      <button id="startBtn" class="lbtn lbtn-primary hidden" style="margin-top:8px;width:100%;font-size:18px;padding:15px;">
+        ▶ Iniciar partida
+      </button>
+      <div id="waitingNote" class="waiting-note">Solo el creador puede iniciar</div>
     </div>
   </div>
 
@@ -169,17 +166,16 @@
     </div>
   </div>
 
-  <!-- ── OVERLAY: FIN DE PARTIDA ── -->
+  <!-- ── OVERLAY: FIN PARTIDA ── -->
   <div id="gameOverOverlay" class="overlay hidden">
     <div class="overlay-card go-card">
       <div class="ov-title">Partida terminada</div>
       <div id="goWinner" class="go-winner">—</div>
       <div id="goScore"  class="go-score">—</div>
-      <button id="goLeaveBtn" class="lbtn lbtn-primary" style="margin-top:16px;">Salir</button>
+      <button id="goLeaveBtn" class="lbtn lbtn-primary" style="margin-top:20px;width:100%;">Salir</button>
     </div>
   </div>
 
 </div><!-- /screenGame -->
-
 </body>
 </html>
