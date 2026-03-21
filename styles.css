@@ -35,7 +35,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Outfit', sans-serif; 
 }
 .lobby-wrap { width: 100%; max-width: 380px; padding: 24px 20px; display: flex; flex-direction: column; gap: 24px; }
 .lobby-header { text-align: center; }
-.lobby-suits { font-size: 22px; letter-spacing: 10px; margin-bottom: 14px; }
+.lobby-portada { width: 100%; max-width: 280px; height: auto; border-radius: 14px; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto; object-fit: cover; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
 .ls { opacity: .75; }
 .ls.oros    { color: #c9930a; }
 .ls.copas   { color: #b52828; }
