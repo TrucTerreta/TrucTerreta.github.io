@@ -40,7 +40,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Outfit', sans-serif; 
 #screenLobby .lobby-wrap { position: relative; z-index: 1; }
 .lobby-wrap { width: 100%; max-width: 380px; padding: 24px 20px; display: flex; flex-direction: column; gap: 24px; }
 .lobby-header { text-align: center; }
-.lobby-portada { width: 100%; max-width: 280px; height: auto; border-radius: 14px; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto; object-fit: cover; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+.lobby-portada { width: 140px; height: auto; border-radius: 10px; margin-bottom: 8px; display: block; margin-left: auto; margin-right: auto; object-fit: cover; }
 .ls { opacity: .75; }
 .ls.oros    { color: #c9930a; }
 .ls.copas   { color: #b52828; }
@@ -253,6 +253,9 @@ h1 .hi { color: var(--gold); }
 
 /* ══ OVERLAYS ═══════════════════════════ */
 .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.82); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
+#waitingOverlay { background: url("fondo.jpg") center/cover no-repeat; }
+#waitingOverlay::before { content:""; position:absolute; inset:0; background:rgba(0,0,0,.6); z-index:0; }
+#waitingOverlay .overlay-card { position:relative; z-index:1; }
 .overlay.hidden { display: none !important; }
 
 /* El overlay entre manos NO tapa la mesa — solo muestra el número flotante */
