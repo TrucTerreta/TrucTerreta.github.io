@@ -458,15 +458,15 @@ function startTurnTimer(active){
 function stopBetween(){clearInterval(betweenTimer);betweenTimer=null;$('countdownOverlay').classList.add('hidden');}
 function startBetween(summaryHtml){
   stopBetween();
-  // Mostrar resumen de puntuación 3s, luego cuenta atrás 5s
   const ov=$('countdownOverlay'),num=$('countdownNum'),lbl=$('countdownLabel');
+  // Mostrar resumen (se mantiene durante toda la cuenta atrás)
   if(lbl&&summaryHtml){lbl.innerHTML=summaryHtml;}
   num.textContent='';
   ov.classList.remove('hidden');
-  // 3 segundos mostrando el resumen
+  // 3s solo resumen, luego 5s cuenta atrás (resumen permanece visible)
   betweenTimer=setTimeout(()=>{
     let n=5;num.textContent=n;
-    if(lbl)lbl.textContent='Nova mà en…';
+    // lbl NO se cambia — el resumen permanece
     betweenTimer=setInterval(async()=>{n--;sndTick();
       if(n>0)num.textContent=n;else{stopBetween();if(mySeat===0)await dealHand();}
     },1000);
@@ -539,7 +539,9 @@ function renderMyCards(state){
   const myCards=fromHObj(h.hands?.[K(mySeat)]);
   // Jugable si NO hemos jugado aún en esta baza
   const played=alreadyPlayed(h,mySeat);
-  const canPlay=!played&&!uiLocked&&h.mode==='normal'&&!h.pendingOffer&&state.status==='playing'&&h.status==='in_progress';
+  // CLAVE: solo puede jugar carta el jugador cuyo turno sea (h.turn===mySeat)
+  // Esto garantiza que tras resolver una baza, solo el ganador puede empezar la siguiente
+  const canPlay=!played&&!uiLocked&&h.turn===mySeat&&h.mode==='normal'&&!h.pendingOffer&&state.status==='playing'&&h.status==='in_progress';
   myCards.forEach(card=>{
     const wrap=document.createElement('div');wrap.className='my-card-wrap deal-anim';
     const cel=buildCard(card);wrap.appendChild(cel);
