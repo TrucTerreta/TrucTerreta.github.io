@@ -178,11 +178,26 @@ function handWinner(state){
   const h=state.hand;
   const w0=getTW(h,0),w1=getTW(h,1);
   if(w0>=2)return 0;if(w1>=2)return 1;
-  const hist=h.trickHistory||[];if(hist.length<3)return state.mano;
-  const r1=hist[0]?.winner??null,r2=hist[1]?.winner??null,r3=hist[2]?.winner??null;
-  if(r1===null&&r2===null&&r3===null)return state.mano;
-  if(r1===null)return r2!==null?r2:r3!==null?r3:state.mano;
-  return r1;
+  const hist=h.trickHistory||[];
+  // Con menos de 3 bazas jugadas, miramos si alguien lleva ventaja
+  const r1=hist[0]?.winner??null;
+  const r2=hist[1]?.winner??null;
+  const r3=hist[2]?.winner??null;
+  // Todas pardas → gana el que tiene la mano
+  if(r1===null&&r2===null&&(r3===null||r3===undefined))return state.mano;
+  // Baza 1 parda → gana quien gane baza 2; si baza 2 también parda → baza 3; si todo parda → mano
+  if(r1===null){
+    if(r2!==null)return r2;
+    if(r3!==null)return r3;
+    return state.mano;
+  }
+  // Baza 1 con ganador → si baza 2 parda, sigue ganando el de baza 1
+  // Si baza 2 tiene ganador diferente → va a baza 3
+  if(r2===null)return r1; // baza 2 parda: gana el de baza 1
+  if(r1===r2)return r1;   // mismo ganador en 1 y 2
+  // Ganadores distintos en 1 y 2 → desempate en baza 3
+  if(r3!==null)return r3;
+  return r1; // si falta baza 3, provisionalmente gana el de baza 1
 }
 
 function applyHandEnd(state,reason){
@@ -311,9 +326,15 @@ async function playCard(card){
       return true;
     });
   }finally{
-    // Desbloquear tras la animación (350ms), no 800ms
-    // Firebase ya actualizó el estado; renderMyCards reactivará las cartas correctas
-    setTimeout(()=>{uiLocked=false;},350);
+    // Desbloquear y forzar re-render para que las cartas vuelvan a ser clickables
+    // si Firebase ya respondió mientras uiLocked estaba activo
+    setTimeout(()=>{
+      uiLocked=false;
+      // Forzar re-render desde el último estado de Firebase
+      if(roomRef){
+        get(roomRef).then(snap=>{if(snap.val())renderAll(snap.val());}).catch(()=>{});
+      }
+    },380);
   }
 }
 
@@ -714,9 +735,24 @@ function renderAll(room){
 
   if(state.status==='game_over'){
     stopBetween();stopTurnTimer();$('waitingOverlay').classList.add('hidden');
+    const wasHidden=$('gameOverOverlay').classList.contains('hidden');
     $('gameOverOverlay').classList.remove('hidden');
-    $('goWinner').textContent=pName(state,state.winner)+' guanya';
-    $('goScore').textContent=`${getScore(state,0)} – ${getScore(state,1)}`;sndWin();return;
+    if(wasHidden){
+      // Primera vez que se muestra
+      const iWon=state.winner===mySeat;
+      $('goTitle').textContent=iWon?'🏆 Has ganado!':'Has perdido';
+      $('goWinner').textContent=pName(state,state.winner)+' guanya';
+      $('goScore').textContent=`${getScore(state,0)} – ${getScore(state,1)}`;
+      if(iWon)sndWin();
+      startConfetti(iWon);
+    }
+    renderRematchStatus(state);
+    return;
+  }
+  // Si la partida ya no es game_over (revancha), ocultar overlay y limpiar
+  if(!$('gameOverOverlay').classList.contains('hidden')){
+    $('gameOverOverlay').classList.add('hidden');
+    stopConfetti();
   }
   $('gameOverOverlay').classList.add('hidden');
 
@@ -742,6 +778,82 @@ function renderAll(room){
     const myTurn=(h.turn===mySeat&&!alreadyPlayed(h,mySeat)&&h.mode==='normal'&&!h.pendingOffer)||h.pendingOffer?.to===mySeat;
     const tk=`${real(state.handNumber)}-${getTrickIndex(h)}-${h.turn}-${h.mode}-${alreadyPlayed(h,mySeat)?1:0}`;
     if(tk!==prevTurnKey){startTurnTimer(myTurn&&h.status==='in_progress');prevTurnKey=tk;}
+  }
+}
+
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
+let confettiRAF=null;
+function startConfetti(iWon){
+  const canvas=$('confettiCanvas');if(!canvas)return;
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  const ctx=canvas.getContext('2d');
+  const colors=['#f0b429','#2ea043','#da3633','#388bfd','#e040fb','#ff6d00'];
+  const particles=Array.from({length:iWon?160:60},()=>({
+    x:Math.random()*canvas.width,
+    y:-20-Math.random()*60,
+    r:4+Math.random()*5,
+    d:2+Math.random()*4,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    tilt:Math.random()*10-5,
+    tiltSpeed:0.1+Math.random()*0.15,
+    opacity:iWon?1:0.4
+  }));
+  let frame=0;
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    frame++;
+    particles.forEach(p=>{
+      p.y+=p.d;p.x+=Math.sin(frame*0.02)*1.2;p.tilt+=p.tiltSpeed;
+      ctx.beginPath();ctx.lineWidth=p.r;ctx.strokeStyle=p.color;ctx.globalAlpha=p.opacity;
+      ctx.moveTo(p.x+p.tilt,p.y);ctx.lineTo(p.x+p.tilt+p.r,p.y+p.r*2);ctx.stroke();
+      if(p.y>canvas.height+10){p.y=-10;p.x=Math.random()*canvas.width;}
+    });
+    ctx.globalAlpha=1;
+    confettiRAF=requestAnimationFrame(draw);
+  }
+  draw();
+  // Stop after 6s
+  setTimeout(stopConfetti,6000);
+}
+function stopConfetti(){
+  if(confettiRAF){cancelAnimationFrame(confettiRAF);confettiRAF=null;}
+  const canvas=$('confettiCanvas');if(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);}
+}
+
+// ─── Rematch ──────────────────────────────────────────────────────────────────
+async function requestRematch(){
+  if(!roomRef||mySeat===null)return;
+  await mutate(state=>{
+    if(!state.rematch)state.rematch={[K(0)]:false,[K(1)]:false};
+    state.rematch[K(mySeat)]=true;
+    // Si ambos quieren revancha → resetear partida
+    if(state.rematch[K(0)]&&state.rematch[K(1)]){
+      state.status='waiting';
+      state.scores={[K(0)]:OFFSET,[K(1)]:OFFSET};
+      state.handNumber=OFFSET;
+      state.mano=other(state.mano); // alterna quien tiene la mano inicial
+      state.hand=null;
+      state.winner=null;
+      state.rematch={[K(0)]:false,[K(1)]:false};
+      state.logs=[];
+      pushLog(state,'Revancha iniciada!');
+    }
+    return true;
+  });
+}
+
+function renderRematchStatus(state){
+  const btn=$('goRematchBtn'),st=$('goRematchStatus');
+  if(!btn||!st)return;
+  const myWant=!!(state.rematch?.[K(mySeat)]);
+  const rivWant=!!(state.rematch?.[K(other(mySeat))]);
+  if(myWant&&!rivWant){
+    btn.disabled=true;btn.textContent='⏳ Esperando revancha…';
+    st.textContent=`${pName(state,other(mySeat))} no ha respondido aún`;
+  }else if(!myWant){
+    btn.disabled=false;btn.textContent='⚔️ Revancha';
+    st.textContent=rivWant?`${pName(state,other(mySeat))} quiere la revancha!`:'';
   }
 }
 
@@ -828,6 +940,7 @@ $('createBtn').addEventListener('click',createRoom);
 $('joinBtn').addEventListener('click',joinRoom);
 $('leaveBtn').addEventListener('click',leaveRoom);
 $('goLeaveBtn').addEventListener('click',leaveRoom);
+$('goRematchBtn')?.addEventListener('click',requestRematch);
 $('startBtn').addEventListener('click',async()=>{$('waitingOverlay').classList.add('hidden');await dealHand();});
 $('envitBtn').addEventListener('click',()=>startOffer('envit'));
 $('trucBtn').addEventListener('click',()=>startOffer('truc'));
