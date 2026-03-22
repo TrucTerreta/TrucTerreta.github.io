@@ -31,8 +31,13 @@ html, body { height: 100%; overflow: hidden; font-family: 'Outfit', sans-serif; 
 /* ══ LOBBY ══════════════════════════════ */
 #screenLobby {
   align-items: center; justify-content: center;
-  background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(46,160,67,.08) 0%, transparent 60%), var(--bg);
+  background: url("fondo.jpg") center/cover no-repeat, var(--bg);
 }
+#screenLobby::before {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(0,0,0,.52); z-index: 0;
+}
+#screenLobby .lobby-wrap { position: relative; z-index: 1; }
 .lobby-wrap { width: 100%; max-width: 380px; padding: 24px 20px; display: flex; flex-direction: column; gap: 24px; }
 .lobby-header { text-align: center; }
 .lobby-portada { width: 100%; max-width: 280px; height: auto; border-radius: 14px; margin-bottom: 16px; display: block; margin-left: auto; margin-right: auto; object-fit: cover; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
