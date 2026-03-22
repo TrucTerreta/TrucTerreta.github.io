@@ -610,3 +610,83 @@ h1 .hi { color: var(--gold); }
 
 /* ── BAZA TEXT: EMPAT in gold ── */
 .baza-empat { color: #f0b429 !important; font-weight: 700; }
+
+/* ── 1. Restore original card back ── */
+.card-back {
+  background: repeating-linear-gradient(45deg, #1a3a2a, #1a3a2a 2px, #0d2018 2px, #0d2018 8px) !important;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.04) 0, rgba(255,255,255,.04) 1px, transparent 1px, transparent 6px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.04) 0, rgba(255,255,255,.04) 1px, transparent 1px, transparent 6px),
+    linear-gradient(135deg, #0f2b1a 0%, #1e4d2a 50%, #0f2b1a 100%) !important;
+}
+.card-back::after {
+  content: 'T' !important;
+  display: flex !important;
+  font-family: 'Crimson Pro', serif !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  color: rgba(255,255,255,.15) !important;
+  font-style: italic !important;
+  align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  position: absolute; inset: 0;
+}
+
+/* ── 2. Bigger table message ── */
+.table-msg { font-size: 36px !important; }
+
+/* ── 3. Bigger player names ── */
+.player-name { font-size: 17px !important; font-weight: 700 !important; }
+
+/* ── 4. Bigger sideInfo blocks ── */
+.si-block { padding: 6px 10px !important; min-width: 80px !important; }
+.si-lbl   { font-size: 10px !important; }
+#sideInfo .si-block > div:last-child { font-size: 14px !important; font-weight: 700 !important; }
+
+/* ── 6. Absence notification ── */
+.absence-notif {
+  position: fixed; top: 56px; left: 0; right: 0; z-index: 200;
+  background: rgba(218,54,51,.92); color: #fff;
+  text-align: center; padding: 8px 16px; font-size: 14px; font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+.absence-notif.hidden { display: none !important; }
+
+/* ── 8. Countdown in center ── */
+.table-cd-msg {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 25;
+  opacity: 0;
+}
+.table-cd-anim { animation: cdShow 1.1s ease forwards; }
+@keyframes cdShow {
+  0%   { opacity: 0; transform: translate(-50%,-60%) scale(0.6); }
+  20%  { opacity: .9; transform: translate(-50%,-50%) scale(1); }
+  75%  { opacity: .9; transform: translate(-50%,-50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+}
+.cd-subtitle { font-size: 13px; color: rgba(255,255,255,.7); letter-spacing: 1px; }
+.cd-number   { font-size: 72px; font-weight: 900; color: var(--gold);
+  text-shadow: 0 0 30px rgba(232,171,42,.8); line-height: 1; }
+
+/* ── 9. Avatar styles ── */
+.avatar-pick { text-align: center; }
+.avatar-pick-lbl { font-size: 12px; color: rgba(255,255,255,.6); margin-bottom: 8px; }
+.avatar-options { display: flex; gap: 10px; justify-content: center; }
+.av-opt {
+  width: 54px; height: 54px; border-radius: 50%; overflow: hidden;
+  border: 2px solid rgba(255,255,255,.2); cursor: pointer;
+  transition: border-color .2s, transform .2s;
+}
+.av-opt:hover { transform: scale(1.1); border-color: var(--gold); }
+.av-opt.av-selected { border: 3px solid var(--gold); box-shadow: 0 0 10px rgba(232,171,42,.5); }
+.av-opt svg { width: 100%; height: 100%; }
+.player-av-sm {
+  width: 32px; height: 32px; border-radius: 50%; overflow: hidden;
+  border: 2px solid rgba(255,255,255,.25); flex-shrink: 0;
+}
+.player-av-sm svg { width: 100%; height: 100%; }
