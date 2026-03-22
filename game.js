@@ -806,12 +806,13 @@ function renderTrickSnapshot(snapshot){
   slot0.innerHTML='';slot1.innerHTML='';
   slot0.style.cssText='display:flex;flex-direction:row;align-items:flex-end;justify-content:center;gap:5px;min-width:80px;height:114px;position:relative;';
   slot1.style.cssText='display:flex;flex-direction:row;align-items:flex-end;justify-content:center;gap:5px;min-width:80px;height:114px;position:relative;';
-  snapshot.allTricks.forEach((t)=>{
+  snapshot.allTricks.forEach((t,ii)=>{
     [0,1].forEach(seat=>{
       const card=seat===0?t.c0:t.c1;
       if(!card||card===EMPTY_CARD)return;
       const el=buildCard(card);
-      el.style.cssText='flex-shrink:0;opacity:0.85;filter:brightness(0.75);';
+      const isLast=(ii===snapshot.allTricks.length-1);
+      el.style.cssText=`flex-shrink:0;opacity:${isLast?1:0.6};filter:${isLast?'none':'brightness(0.55)'};`;
       (seat===0?slot0:slot1).appendChild(el);
     });
   });
@@ -861,20 +862,7 @@ function renderTrick(state){
     (seat===0?slot0:slot1).appendChild(el);
   });
 
-  // History dots + result text
-  const info=$('centerInfo');info.innerHTML='';
-  const hist=h.trickHistory||[];
-  if(hist.length){
-    const dots=document.createElement('div');dots.className='trick-history-dots';
-    hist.forEach(t=>{
-      const d=document.createElement('div');d.className='trick-dot';
-      if(t.winner===99||t.winner===null)d.classList.add('draw');
-      else if(t.winner===mySeat)d.classList.add('won');
-      else d.classList.add('lost');
-      dots.appendChild(d);
-    });
-    info.appendChild(dots);
-  }
+  // (trick dots removed per request)
 }
 
 function renderActions(state){
@@ -894,14 +882,17 @@ function renderActions(state){
   const iHaventPlayed=!alreadyPlayed(h,mySeat);
   const envitOk=noTricksPlayed&&iHaventPlayed&&!envDone;
   eB.disabled=!envitOk||!myT||!!h.pendingOffer||(h.mode!=='normal'&&h.mode!=='respond_truc');
-  // Truc button: disabled if truc already at max level (val4) or rejected
+  // Truc button logic:
+  // - Never if truc rejected, at max (4), or offer pending
+  // - Only if truc never happened (state=none) OR we are the responder who accepted and can escalate
   const trucRejected=h.truc.state==='rejected';
-  const trucAtMax=h.truc.state==='accepted'&&Number(h.truc.acceptedLevel||0)>=4;
+  const trucLevel=Number(h.truc.acceptedLevel||0);
+  const trucAtMax=h.truc.state==='accepted'&&trucLevel>=4;
   const trucPending=!!h.pendingOffer&&h.pendingOffer.kind==='truc';
-  // After acceptance at level 2, the OTHER player can escalate (retruque) in next trick
-  // We allow truc button if: truc accepted at level <4, it's our turn, and we're the responder
-  const canEscalate=h.truc.state==='accepted'&&Number(h.truc.acceptedLevel||0)<4&&h.truc.responder===mySeat;
-  tB.disabled=played||!myT||!norm||trucPending||trucRejected||(trucAtMax)||(h.truc.state==='accepted'&&!canEscalate);
+  // Responder (who said vull) can escalate to next level in following tricks
+  const canEscalate=h.truc.state==='accepted'&&trucLevel<4&&h.truc.responder===mySeat;
+  const trucNeverHappened=h.truc.state==='none';
+  tB.disabled=played||!myT||!norm||trucPending||trucRejected||trucAtMax||(!trucNeverHappened&&!canEscalate);
   // Ir al mazo: available any time it's your turn and you haven't played yet
   mB.disabled=played||!myT||!norm||!!h.pendingOffer;
   if(h.pendingOffer&&h.turn===mySeat){
@@ -915,7 +906,8 @@ function renderActions(state){
       if(h.pendingOffer.level===2){add('Torne','abtn-gold',()=>respondEnvit('torne'));add('Falta','abtn-gold',()=>respondEnvit('falta'));}
       else if(h.pendingOffer.level===4)add('Falta','abtn-gold',()=>respondEnvit('falta'));
     }else{
-      if(h.envitAvailable&&!envDone)add('Envidar','abtn-green',()=>startOffer('envit'));
+      // Envit never available once a truc offer is in play
+      // (envitAvailable is only true before first card)
       add('Vull','abtn-green',()=>respondTruc('vull'));add('No vull','abtn-red',()=>respondTruc('no_vull'));
       if(h.pendingOffer.level===2)add('Retruque','abtn-gold',()=>respondTruc('retruque'));
       if(h.pendingOffer.level===3)add('Val 4','abtn-gold',()=>respondTruc('val4'));
@@ -1036,7 +1028,7 @@ function renderAll(room){
       const iWon=state.winner===mySeat;
       setTimeout(()=>{
         $('gameOverOverlay').classList.remove('hidden');
-        $('goTitle').textContent=iWon?'[T] Has guanyat!':'Has perdut';
+        $('goTitle').textContent=iWon?'🏆 Has guanyat!':'Has perdut';
         $('goWinner').textContent=pName(state,state.winner)+' guanya';
         $('goScore').textContent=`${getScore(state,mySeat)} - ${getScore(state,other(mySeat))}`;
         if(iWon){sndWin();startConfetti(true);}
@@ -1170,7 +1162,7 @@ function renderRematchStatus(state){
     btn.disabled=true;btn.textContent='() Esperando revancha...';
     st.textContent=`${pName(state,other(mySeat))} no ha respondido aun`;
   }else if(!myWant){
-    btn.disabled=false;btn.textContent='vs Revancha';
+    btn.disabled=false;btn.textContent='⚔️ Revancha';
     st.textContent=rivWant?`${pName(state,other(mySeat))} quiere la revancha!`:'';
   }
 }
@@ -1242,6 +1234,43 @@ function renderAvatars(room){
     el.style.opacity=takenByRival?'0.3':'1';
     el.title=takenByRival?'Aquest avatar l\'usa el teu rival':'';
   });
+}
+
+
+// -- Available rooms list ---------------------------------------------------
+async function loadRoomList(){
+  const listEl=$('roomList');if(!listEl)return;
+  listEl.innerHTML='<div class="rl-loading">Cercant sales...</div>';
+  try{
+    const snap=await get(ref(db,'rooms'));
+    const rooms=snap.val();
+    if(!rooms){listEl.innerHTML='<div class="rl-empty">Cap sala disponible</div>';return;}
+    const open=[];
+    for(const[code,room] of Object.entries(rooms)){
+      const st=room?.state;
+      if(!st||st.status==='game_over')continue;
+      const p0=st.players?.[K(0)];
+      const p1=st.players?.[K(1)];
+      // Only show rooms with 1 player (waiting for second)
+      if(p0&&!p1){
+        const inactive=Date.now()-(room.lastActivity||0)>3600000;
+        if(!inactive)open.push({code,host:p0.name,createdAt:room.meta?.createdAt||0});
+      }
+    }
+    if(!open.length){listEl.innerHTML='<div class="rl-empty">Cap sala oberta</div>';return;}
+    // Sort newest first
+    open.sort((a,b)=>b.createdAt-a.createdAt);
+    listEl.innerHTML='';
+    open.forEach(r=>{
+      const row=document.createElement('div');row.className='rl-row';
+      row.innerHTML=`<div class="rl-info"><span class="rl-code">${r.code}</span><span class="rl-host">${r.host}</span></div><button class="lbtn lbtn-primary rl-join">Unir-se</button>`;
+      row.querySelector('.rl-join').addEventListener('click',()=>{
+        $('roomInput').value=r.code;
+        joinRoom();
+      });
+      listEl.appendChild(row);
+    });
+  }catch(e){listEl.innerHTML='<div class="rl-empty">Error cercant sales</div>';}
 }
 
 let unsubMsg=null;
@@ -1355,6 +1384,10 @@ document.querySelectorAll('.av-opt').forEach((el,i)=>{
 // Restore saved avatar selection
 pickAvatar(myAvatar);
 loadLS();
+// Load available rooms
+loadRoomList();
+// Refresh list every 10s while on lobby
+setInterval(()=>{ if(!$('screenLobby').classList.contains('hidden'))loadRoomList(); },10000);
 (async()=>{
   const _sr=localStorage.getItem(LS.room);
   if(_sr){
