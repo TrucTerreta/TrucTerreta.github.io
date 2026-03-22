@@ -89,6 +89,7 @@ const sndWin  =()=>{[523,659,784,1047].forEach((f,i)=>tone(f,'sine',.14,.17,i*.1
 const sndPoint=()=>{tone(330,'sine',.11,.13);tone(450,'sine',.09,.11,.1);};
 const sndTick =()=>tone(880,'square',.04,.06);
 const sndBtn  =()=>{tone(600,'sine',.04,.08);};
+const sndLose =()=>{tone(200,'sawtooth',.3,.12);tone(150,'sawtooth',.4,.1,.25);};
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 let roomRef=null,roomCode=null,mySeat=null;
@@ -261,8 +262,14 @@ function resolveTrick(state){
   const idx=getTrickIndex(h);
   const lead=h.trickLead??state.mano;
   h.trickHistory=(h.trickHistory||[]).concat([{i:idx+1,c0,c1,winner:w,lead}]);
-  if(w!==null){addTW(h,w);h.turn=w;pushLog(state,`Baza ${idx+1}: guanya J${w}.`);}
-  else{h.turn=lead;pushLog(state,`Baza ${idx+1}: parda.`);}
+  if(w!==null){
+    addTW(h,w);h.turn=w;
+    const wn=state.players?.[K(w)]?.name||`J${w}`;
+    pushLog(state,`Baza ${idx+1}: guanya ${wn}.`);
+  }else{
+    h.turn=lead;
+    pushLog(state,`Baza ${idx+1}: EMPAT.`); // EMPAT not undefined
+  }
   h.trickLead=h.turn;
   h.trickIndex=(Number(h.trickIndex||OFFSET))+1;
   // Guardar la baza resuelta en el array de todas las bazas
@@ -278,8 +285,10 @@ function resolveTrick(state){
   // Terminar mano si: 2 bazas ganadas, o 3 bazas jugadas,
   // o baza 1 fue parda y baza 2 tiene ganador (el ganador de b2 gana)
   const b1Draw=hist.length>=1&&hist[0].winner===null;
+  const b2Draw=hist.length>=2&&hist[1].winner===null;
   const b2HasWinner=hist.length>=2&&hist[1].winner!==null;
-  const handOver=w0>=2||w1>=2||tIdx>=3||(b1Draw&&b2HasWinner);
+  // End if: 2 wins, 3 tricks, b1draw+b2winner, or b1winner+b2draw
+  const handOver=w0>=2||w1>=2||tIdx>=3||(b1Draw&&b2HasWinner)||((!b1Draw&&hist.length>=1&&hist[0].winner!==null)&&b2Draw);
   if(handOver){
     const hw=handWinner(state);
     // hw is 0 or 1 — use state.players directly (we're inside the transaction)
@@ -346,7 +355,8 @@ async function playCard(card){
       // Registrar carta jugada (NUNCA borramos played, solo sobreescribimos)
       setPlayed(h,mySeat,card);
       h.envitAvailable=false;
-      pushLog(state,`J${mySeat} juga ${cardLabel(card)}.`);
+      const plrName=state.players?.[K(mySeat)]?.name||`J${mySeat}`;
+      pushLog(state,`${plrName} juga ${cardLabel(card)}.`);
       if(alreadyPlayed(h,other(mySeat))){
         // Los dos han jugado → resolver baza (resolveTrick fija h.turn al ganador)
         resolveTrick(state);
@@ -378,7 +388,7 @@ async function goMazo(){
     const h=state.hand;
     if(!h||state.status!=='playing'||h.status!=='in_progress')return false;
     if(h.turn!==mySeat||h.mode!=='normal'||h.pendingOffer)return false;
-    if(getTrickIndex(h)!==0||alreadyPlayed(h,0)||alreadyPlayed(h,1))return false;
+    // Ir al mazo allowed any time it's your turn
     const w=other(mySeat);addSA(h,w);
     pushLog(state,`J${mySeat} al mazo. +1 J${w}.`);
     applyHandEnd(state,'Mazo.');return true;
@@ -400,8 +410,14 @@ async function startOffer(kind){
     }
     if(kind==='truc'){
       if(h.mode!=='normal')return false;
+      // Determine level: if escalating after acceptance, use next level
+      let trucLevel=2;
+      if(h.truc.state==='accepted'&&h.truc.responder===mySeat){
+        trucLevel=Number(h.truc.acceptedLevel||2)+1;
+        if(trucLevel>4)return false;
+      }else if(h.truc.state!=='none')return false;
       h.resume={mode:h.mode,turn:h.turn};
-      h.pendingOffer={kind:'truc',level:2,by:mySeat,to:other(mySeat)};
+      h.pendingOffer={kind:'truc',level:trucLevel,by:mySeat,to:other(mySeat)};
       h.mode='respond_truc';h.turn=other(mySeat);h.envitAvailable=true;
       pushLog(state,`J${mySeat} canta truc.`);return true;
     }
@@ -592,6 +608,15 @@ function buildCard(card){
 }
 function buildBack(){const el=document.createElement('div');el.className='card-back';return el;}
 
+// ── Show action label in center of table ──────────────────────────────────────
+function showTableMsg(text){
+  let el=$('tableMsgEl');
+  if(!el){el=document.createElement('div');el.id='tableMsgEl';el.className='table-msg';document.getElementById('centerZone').appendChild(el);}
+  el.textContent=text;el.classList.remove('table-msg-anim');
+  void el.offsetWidth; // reflow
+  el.classList.add('table-msg-anim');
+}
+
 function animatePlay(cardEl,card,onDone){
   const slot=$(`trickSlot${mySeat}`);
   const fr=cardEl.getBoundingClientRect();
@@ -610,50 +635,48 @@ function animatePlay(cardEl,card,onDone){
 // ─── Score summary for between-hands overlay ─────────────────────────────────
 function buildScoreSummary(state){
   const logs=state.logs||[];
-  // Collect point events from this hand (logs are newest-first)
-  // Find the "Marcador:" line — everything before it belongs to this hand
-  const marcIdx=logs.findIndex(l=>l.text?.startsWith('Marcador:'));
-  const handLogs=marcIdx>=0?logs.slice(0,marcIdx):logs.slice(0,8);
-  // Filter to point events
-  const pointEvents=handLogs.filter(l=>l.text&&l.text.includes('(+')).reverse();
+  const p0=pName(state,0),p1=pName(state,1);
+  // Find logs from this hand: stop at the SECOND "Marcador:" entry
+  let marcCount=0;
+  const handLogs=[];
+  for(const l of logs){
+    if(l.text?.startsWith('Marcador:')){marcCount++;if(marcCount>=2)break;}
+    handLogs.push(l);
+  }
+  handLogs.reverse(); // oldest first
+  
+  let pts0=0,pts1=0;
+  const rows=[];
+  for(const l of handLogs){
+    const txt=l.text||'';
+    const m=txt.match(/\(\+(\d+)\)/);
+    if(!m)continue;
+    const pts=Number(m[1]);
+    let label='',winner='';
+    if(txt.includes('Envit')&&txt.includes('guanya')){
+      winner=txt.includes(p0)?p0:p1;
+      label=`Envit guanyat per <b>${winner}</b>`;
+    }else if(txt.includes('Truc')&&txt.includes('guanya')){
+      winner=txt.includes(p0)?p0:p1;
+      label=`Truc guanyat per <b>${winner}</b>`;
+    }else if((txt.includes('Mà')&&txt.includes('guanyada'))||txt.includes('guanyat')){
+      winner=txt.includes(p0)?p0:p1;
+      label=`Mà guanyada per <b>${winner}</b>`;
+    }else if(txt.includes('mazo')||txt.includes('Mazo')){
+      winner=txt.includes(p0)?p0:p1;
+      label=`Al mazo, punt per <b>${winner}</b>`;
+    }else if(txt.includes('rebutjat')||txt.includes('rejected')){
+      winner=txt.includes(p0)?p0:p1;
+      label=`Rebutjat, punt per <b>${winner}</b>`;
+    }else{continue;}
+    if(winner===p0)pts0+=pts;else pts1+=pts;
+    rows.push(`<div class="sum-row"><span class="sum-label">${label}</span><span class="sum-pts">+${pts}</span></div>`);
+  }
   
   let html='<div class="summary-events">';
-  // Track points for this hand
-  let pts0=0,pts1=0;
-  pointEvents.forEach(l=>{
-    let txt=l.text;
-    // Extract points amount
-    const m=txt.match(/\(\+(\d+)\)/);
-    const pts=m?Number(m[1]):1;
-    // Determine winner from text
-    const p0name=pName(state,0),p1name=pName(state,1);
-    const won0=txt.includes(p0name)||txt.match(new RegExp(`J0`));
-    // Determine event type
-    let label=txt;
-    if(txt.includes('Envit')||txt.includes('nvit')){
-      const winner=txt.includes(p0name)?p0name:p1name;
-      label=`Envit guanyat per <b>${winner}</b>`;
-      if(txt.includes(p0name))pts0+=pts;else pts1+=pts;
-    }else if(txt.includes('Truc')||txt.includes('truc')){
-      const winner=txt.includes(p0name)?p0name:p1name;
-      label=`Truc guanyat per <b>${winner}</b>`;
-      if(txt.includes(p0name))pts0+=pts;else pts1+=pts;
-    }else if(txt.includes('Mà')||txt.includes('guanyada')){
-      const winner=txt.includes(p0name)?p0name:p1name;
-      label=`Mà guanyada per <b>${winner}</b>`;
-      if(txt.includes(p0name))pts0+=pts;else pts1+=pts;
-    }else if(txt.includes('mazo')||txt.includes('Mazo')){
-      const winner=txt.includes(p0name)?p0name:p1name;
-      label=`Al mazo, punt per <b>${winner}</b>`;
-      if(txt.includes(p0name))pts0+=pts;else pts1+=pts;
-    }else{
-      label=txt;
-    }
-    html+=`<div class="sum-row"><span class="sum-label">${label}</span> <span class="sum-pts">+${pts}</span></div>`;
-  });
-  
-  // Result of this hand
-  html+=`</div><div class="sum-result">${pName(state,0)} <span class="sum-score">${pts0}</span> – <span class="sum-score">${pts1}</span> ${pName(state,1)}</div>`;
+  if(rows.length){html+=rows.join('');}
+  else{html+='<div style="color:var(--muted);font-size:12px">Cap punt especial</div>';}
+  html+=`</div><div class="sum-result">${p0} <span class="sum-score">${pts0}</span> – <span class="sum-score">${pts1}</span> ${p1}</div>`;
   return html;
 }
 
@@ -740,16 +763,17 @@ function renderTrick(state){
     sl.style.cssText='display:flex;flex-direction:row;align-items:flex-end;justify-content:center;gap:5px;min-width:80px;height:114px;position:relative;';
   });
 
-  // Previous tricks — dimmed with dark overlay tint
+  // Previous tricks — only dim when a new card is being played (hasCurrent)
   allT.forEach((t,i)=>{
-    const isLast=(i===allT.length-1)&&!hasCurrent;
-    const opacity=isLast?0.75:0.45;
-    const filter=isLast?'brightness(0.65)':'brightness(0.4)';
+    const isLastResolved=(i===allT.length-1);
+    // If nothing playing yet, last resolved trick stays at full brightness
+    const opacity=hasCurrent?(isLastResolved?0.7:0.45):(isLastResolved?1:0.55);
+    const filt=hasCurrent?(isLastResolved?'brightness(0.7)':'brightness(0.4)'):(isLastResolved?'brightness(1)':'brightness(0.65)');
     [0,1].forEach(seat=>{
       const card=seat===0?t.c0:t.c1;
       if(!card||card===EMPTY_CARD)return;
       const el=buildCard(card);
-      el.style.cssText=`flex-shrink:0;opacity:${opacity};filter:${filter};transition:none;`;
+      el.style.cssText=`flex-shrink:0;opacity:${opacity};filter:${filt};transition:opacity .4s,filter .4s;`;
       (seat===0?slot0:slot1).appendChild(el);
     });
   });
@@ -780,7 +804,7 @@ function renderTrick(state){
     const last=hist[hist.length-1];
     const msg=document.createElement('div');
     msg.style.cssText='font-size:11px;color:var(--muted);margin-top:4px;text-align:center;';
-    if(last.winner===null){msg.textContent='Empat';}else{const wn=_lastState?pName(_lastState,last.winner):'J'+last.winner;msg.textContent=`Baza ${hist.length}: ${wn} guanya`;}
+    if(last.winner===null){msg.textContent='Empat';msg.classList.add('baza-empat');}else{const wn=_lastState?pName(_lastState,last.winner):'J'+last.winner;msg.textContent=`Baza ${hist.length}: ${wn} guanya`;}
     info.appendChild(msg);
   }
 }
@@ -798,19 +822,26 @@ function renderActions(state){
   // Envit: SOLO antes de que cualquiera juegue la primera carta de la mano
   // = ninguna baza resuelta aún + nadie ha jugado carta en esta primera baza
   const noTricksPlayed=(h.trickHistory||[]).length===0;
-  const noCardPlayedYet=!alreadyPlayed(h,0)&&!alreadyPlayed(h,1);
-  const envitOk=noTricksPlayed&&noCardPlayedYet&&!envDone;
+  // Envit ok if: first trick, I haven't played my card yet, no envit done
+  const iHaventPlayed=!alreadyPlayed(h,mySeat);
+  const envitOk=noTricksPlayed&&iHaventPlayed&&!envDone;
   eB.disabled=!envitOk||!myT||!!h.pendingOffer||(h.mode!=='normal'&&h.mode!=='respond_truc');
-  const trucDone=h.truc.state!=='none'; // truc ya en juego
-  const trucMaxed=h.pendingOffer?.kind==='truc'&&h.pendingOffer?.level>=4; // ya en val4
-  tB.disabled=played||!myT||!norm||!!h.pendingOffer||trucDone||trucMaxed;
-  mB.disabled=played||!myT||!norm||!!h.pendingOffer||getTrickIndex(h)!==0||alreadyPlayed(h,0)||alreadyPlayed(h,1);
+  // Truc button: disabled if truc already at max level (val4) or rejected
+  const trucRejected=h.truc.state==='rejected';
+  const trucAtMax=h.truc.state==='accepted'&&Number(h.truc.acceptedLevel||0)>=4;
+  const trucPending=!!h.pendingOffer&&h.pendingOffer.kind==='truc';
+  // After acceptance at level 2, the OTHER player can escalate (retruque) in next trick
+  // We allow truc button if: truc accepted at level <4, it's our turn, and we're the responder
+  const canEscalate=h.truc.state==='accepted'&&Number(h.truc.acceptedLevel||0)<4&&h.truc.responder===mySeat;
+  tB.disabled=played||!myT||!norm||trucPending||trucRejected||(trucAtMax)||(h.truc.state==='accepted'&&!canEscalate);
+  // Ir al mazo: available any time it's your turn and you haven't played yet
+  mB.disabled=played||!myT||!norm||!!h.pendingOffer;
   if(h.pendingOffer&&h.turn===mySeat){
     om.textContent=h.pendingOffer.kind==='envit'
       ?(h.pendingOffer.level==='falta'?'Envit de falta':h.pendingOffer.level===4?'Torne (4)':'Envit')
       :(h.pendingOffer.level===3?'Retruque':h.pendingOffer.level===4?'Val 4':'Truc');
     om.classList.remove('hidden');ra.classList.remove('hidden');
-    const add=(l,cls,fn)=>{const b=document.createElement('button');b.textContent=l;b.className=`abtn ${cls}`;b.addEventListener('click',()=>{sndBtn();fn();});ra.appendChild(b);};
+    const add=(l,cls,fn)=>{const b=document.createElement('button');b.textContent=l;b.className=`abtn ${cls}`;b.addEventListener('click',()=>{sndBtn();showTableMsg(l);fn();});ra.appendChild(b);};
     if(h.pendingOffer.kind==='envit'){
       add('Vull','abtn-green',()=>respondEnvit('vull'));add('No vull','abtn-red',()=>respondEnvit('no_vull'));
       if(h.pendingOffer.level===2){add('Torne','abtn-gold',()=>respondEnvit('torne'));add('Falta','abtn-gold',()=>respondEnvit('falta'));}
@@ -831,15 +862,13 @@ function renderActions(state){
 }
 
 function updateRivalTimer(state){
-  // Muestra/oculta el indicador circular de turno del rival
   const h=state.hand;
-  const rivalEl=$('rivalTurnDot');
-  if(!rivalEl)return;
-  if(!h||state.status!=='playing'||h.status!=='in_progress'){
-    rivalEl.classList.add('hidden');return;
-  }
-  const rivalHasTurn=(h.turn===other(mySeat)&&!alreadyPlayed(h,other(mySeat)));
-  rivalEl.classList.toggle('hidden',!rivalHasTurn);
+  const my=$('myZone'),riv=$('rivalZone');
+  const playing=h&&state.status==='playing'&&h.status==='in_progress';
+  const myActive=playing&&(h.turn===mySeat&&!alreadyPlayed(h,mySeat));
+  const rivActive=playing&&(h.turn===other(mySeat)&&!alreadyPlayed(h,other(mySeat)));
+  if(my){my.classList.toggle('turn-active',!!myActive);}
+  if(riv){riv.classList.toggle('turn-active',!!rivActive);}
 }
 
 function renderHUD(state){
@@ -857,8 +886,11 @@ function renderHUD(state){
 
 function renderLog(state){
   const a=$('logArea');a.innerHTML='';
+  const p0=pName(state,0),p1=pName(state,1);
   (state.logs||[]).slice(0,15).forEach(item=>{
-    const d=document.createElement('div');d.className='log-entry';d.textContent=item.text;a.appendChild(d);
+    const d=document.createElement('div');d.className='log-entry';
+    let txt=(item.text||'').replace(/\bJ0\b/g,p0).replace(/\bJ1\b/g,p1);
+    d.textContent=txt;a.appendChild(d);
   });
 }
 
@@ -903,23 +935,22 @@ function renderAll(room){
     const wasHidden=$('gameOverOverlay').classList.contains('hidden');
     $('gameOverOverlay').classList.remove('hidden');
     if(wasHidden){
-      // Primera vez que se muestra
       const iWon=state.winner===mySeat;
-      $('goTitle').textContent=iWon?'🏆 Has ganado!':'Has perdido';
+      $('goTitle').textContent=iWon?'🏆 Has guanyat!':'Has perdut';
       $('goWinner').textContent=pName(state,state.winner)+' guanya';
-      $('goScore').textContent=`${getScore(state,0)} – ${getScore(state,1)}`;
-      if(iWon)sndWin();
-      startConfetti(iWon);
+      $('goScore').textContent=`${getScore(state,mySeat)} – ${getScore(state,other(mySeat))}`;
+      if(iWon){sndWin();startConfetti(true);}
+      else{sndLose();startConfetti(false);}
     }
     renderRematchStatus(state);
-    return;
-  }
-  // Si la partida ya no es game_over (revancha), ocultar overlay y limpiar
+    // Don't return early — let renderTrick show the last cards
+  }else{
+  // Si ya no es game_over (revancha), ocultar overlay
   if(!$('gameOverOverlay').classList.contains('hidden')){
     $('gameOverOverlay').classList.add('hidden');
     stopConfetti();
   }
-  $('gameOverOverlay').classList.add('hidden');
+  }// end else
 
   if(state.status==='waiting'){
     stopTurnTimer();
@@ -929,8 +960,11 @@ function renderAll(room){
       const p0ready=!!(state.ready?.[K(0)]);
       const p1ready=!!(state.ready?.[K(1)]);
       const myReady=mySeat===0?p0ready:p1ready;
+      const rivReady=mySeat===0?p1ready:p0ready;
       if(ready){
-        $('waitingStatus').textContent=`${pName(state,0)} i ${pName(state,1)} preparats`;
+        const rivName=pName(state,other(mySeat));
+        const readyTxt=rivReady?`${rivName} està preparat!`:'Esperant que els jugadors estiguen llestos…';
+        $('waitingStatus').textContent=readyTxt;
       }else{
         $('waitingStatus').textContent='Esperant el segon jugador…';
       }
@@ -1126,16 +1160,19 @@ $('goLeaveBtn').addEventListener('click',leaveRoom);
 $('goRematchBtn')?.addEventListener('click',requestRematch);
 $('guestReadyBtn')?.addEventListener('click',async()=>{
   sndBtn();
+  $('guestReadyBtn').classList.add('hidden');
+  $('guestWaitMsg').classList.remove('hidden');
   await mutate(state=>{
     if(!state.ready)state.ready={[K(0)]:false,[K(1)]:false};
     state.ready[K(mySeat)]=true;
+    pushLog(state,pName(state,mySeat)+' està preparat!');
     return true;
   });
 });
 $('startBtn').addEventListener('click',async()=>{sndBtn();$('waitingOverlay').classList.add('hidden');await dealHand();});
-$('envitBtn').addEventListener('click',()=>{sndBtn();startOffer('envit');});
-$('trucBtn').addEventListener('click',()=>{sndBtn();startOffer('truc');});
-$('mazoBtn').addEventListener('click',()=>{sndBtn();goMazo();});
+$('envitBtn').addEventListener('click',()=>{sndBtn();showTableMsg('Envit!');startOffer('envit');});
+$('trucBtn').addEventListener('click',()=>{sndBtn();showTableMsg('Truc!');startOffer('truc');});
+$('mazoBtn').addEventListener('click',()=>{sndBtn();showTableMsg('Al Mazo');goMazo();});
 $('logToggle').addEventListener('click',()=>{
   const b=$('logBody');b.classList.toggle('hidden');
   $('logToggle').textContent=b.classList.contains('hidden')?'▸ Registro':'▾ Registro';
