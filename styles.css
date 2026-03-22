@@ -268,9 +268,31 @@ h1 .hi { color: var(--gold); }
 
 /* ══ OVERLAYS ═══════════════════════════ */
 .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.82); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
-#waitingOverlay { background: url("fondo.jpg") center/cover no-repeat; }
-#waitingOverlay::before { content:""; position:absolute; inset:0; background: rgba(0,0,0,.68); z-index: 0; }
-#waitingOverlay .overlay-card { position:relative; z-index:1; }
+/* waitingOverlay: fondo.jpg con blur + panel sólido centrado */
+#waitingOverlay {
+  background: url("fondo.jpg") center/cover no-repeat, var(--bg);
+}
+#waitingOverlay::before {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 0;
+}
+#waitingOverlay .overlay-card {
+  position: relative; z-index: 1;
+  background: rgba(10,18,14,.92) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.7);
+}
+#waitingOverlay .overlay-card {
+  position: relative; z-index: 1;
+  background: rgba(10,18,14,.90);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 20px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
 .overlay.hidden { display: none !important; }
 
 /* Countdown entre manos: flotante, semitransparente, no tapa el tablero */
