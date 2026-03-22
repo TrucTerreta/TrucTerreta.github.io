@@ -542,3 +542,71 @@ h1 .hi { color: var(--gold); }
   0%,100% { filter: drop-shadow(0 0 4px rgba(46,160,67,.7)); }
   50%      { filter: drop-shadow(0 0 10px rgba(46,160,67,1)); }
 }
+
+/* ── TABLE MSG (button action displayed in center) ── */
+.table-msg {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  font-size: 22px; font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 2px 12px rgba(0,0,0,.8);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 30;
+}
+.table-msg-anim {
+  animation: tableMsgShow 2.5s ease forwards;
+}
+@keyframes tableMsgShow {
+  0%   { opacity: 0; transform: translate(-50%,-60%) scale(0.7); }
+  15%  { opacity: 1; transform: translate(-50%,-50%) scale(1.15); }
+  40%  { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+}
+
+/* ── TURN ACTIVE ZONES ── */
+#myZone.turn-active .player-name {
+  color: var(--gold);
+  animation: namePulse 1.2s ease-in-out infinite;
+}
+#rivalZone.turn-active .player-name {
+  color: #f0a0a0;
+  animation: namePulse 1.2s ease-in-out infinite;
+}
+@keyframes namePulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ── GAME OVER OVERLAY — transparent over board ── */
+#gameOverOverlay {
+  background: rgba(0,0,0,.65) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+}
+#gameOverOverlay .overlay-card {
+  background: rgba(12,22,16,.88) !important;
+}
+
+/* ── TABLE: lighter felt ── */
+#table {
+  background: radial-gradient(ellipse at 50% 40%, #2d6e3a 0%, #1e4d28 100%) !important;
+}
+#table::before {
+  background: none !important;
+}
+
+/* ── CARD BACK with logo ── */
+.card-back {
+  background-image: url('portada.png') !important;
+  background-size: 55% auto !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+.card-back::after {
+  display: none !important;
+}
+
+/* ── BAZA TEXT: EMPAT in gold ── */
+.baza-empat { color: #f0b429 !important; font-weight: 700; }
