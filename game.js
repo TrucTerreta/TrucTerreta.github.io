@@ -160,7 +160,7 @@ function makeHand(mano){
     hands:{[K(0)]:toHObj(deck.slice(0,3)),[K(1)]:toHObj(deck.slice(3,6))},
     // played: siempre presente con EMPTY_CARD para que Firebase no lo borre
     played:{[PK(0)]:EMPTY_CARD,[PK(1)]:EMPTY_CARD},
-    lastTrick:{c0:EMPTY_CARD,c1:EMPTY_CARD,w:99},  // última baza resuelta (99=no hay)
+    allTricks:[],  // array de {c0,c1,w} de todas las bazas jugadas
     trickLead:mano,
     trickIndex:OFFSET,  // stored +OFFSET
     trickWins:{[K(0)]:OFFSET,[K(1)]:OFFSET},
@@ -232,8 +232,8 @@ function resolveTrick(state){
   else{h.turn=lead;pushLog(state,`Baza ${idx+1}: parda.`);}
   h.trickLead=h.turn;
   h.trickIndex=(Number(h.trickIndex||OFFSET))+1;
-  // Guardar la baza resuelta para mostrar en mesa
-  h.lastTrick={c0:c0||EMPTY_CARD,c1:c1||EMPTY_CARD,w:w===null?99:w};
+  // Guardar la baza resuelta en el array de todas las bazas
+  h.allTricks=(h.allTricks||[]).concat([{c0:c0||EMPTY_CARD,c1:c1||EMPTY_CARD,w:w===null?99:w}]);
   // RESET played con EMPTY_CARD — nunca borramos el nodo
   resetPlayed(h);
   h.mode='normal';
@@ -456,13 +456,21 @@ function startTurnTimer(active){
   },50);
 }
 function stopBetween(){clearInterval(betweenTimer);betweenTimer=null;$('countdownOverlay').classList.add('hidden');}
-function startBetween(){
+function startBetween(summaryHtml){
   stopBetween();
-  const ov=$('countdownOverlay'),num=$('countdownNum');
-  ov.classList.remove('hidden');let n=5;num.textContent=n;
-  betweenTimer=setInterval(async()=>{n--;sndTick();
-    if(n>0)num.textContent=n;else{stopBetween();if(mySeat===0)await dealHand();}
-  },1000);
+  // Mostrar resumen de puntuación 3s, luego cuenta atrás 5s
+  const ov=$('countdownOverlay'),num=$('countdownNum'),lbl=$('countdownLabel');
+  if(lbl&&summaryHtml){lbl.innerHTML=summaryHtml;}
+  num.textContent='';
+  ov.classList.remove('hidden');
+  // 3 segundos mostrando el resumen
+  betweenTimer=setTimeout(()=>{
+    let n=5;num.textContent=n;
+    if(lbl)lbl.textContent='Nova mà en…';
+    betweenTimer=setInterval(async()=>{n--;sndTick();
+      if(n>0)num.textContent=n;else{stopBetween();if(mySeat===0)await dealHand();}
+    },1000);
+  },3000);
 }
 
 // ─── Card builders ────────────────────────────────────────────────────────────
@@ -501,6 +509,24 @@ function animatePlay(cardEl,card,onDone){
 }
 
 // ─── Render ───────────────────────────────────────────────────────────────────
+
+// ─── Score summary for between-hands overlay ─────────────────────────────────
+function buildScoreSummary(state){
+  // state here is the WAITING state after hand ended - scores already updated
+  // We need the last log entries to reconstruct what happened
+  const logs=state.logs||[];
+  const s0=getScore(state,0),s1=getScore(state,1);
+  let html=`<div style="font-size:13px;line-height:1.7;text-align:center;color:var(--text)">`;
+  // Show last 4 log entries that contain point info
+  const relevant=logs.filter(l=>l.text&&(l.text.includes('+')&&(l.text.includes('Envit')||l.text.includes('Truc')||l.text.includes('Mà')||l.text.includes('Mazo')))).slice(0,4);
+  if(relevant.length){
+    relevant.reverse().forEach(l=>{html+=`<div>${l.text}</div>`;});
+  }
+  html+=`<div style="margin-top:8px;font-size:16px;font-weight:700;color:var(--gold)">${pName(state,0)}: ${s0} &nbsp;·&nbsp; ${pName(state,1)}: ${s1}</div>`;
+  html+=`</div>`;
+  return html;
+}
+
 function renderRivalCards(handObj){
   const z=$('rivalCards');z.innerHTML='';
   const cards=fromHObj(handObj);const n=cards.length;
@@ -533,35 +559,40 @@ function renderTrick(state){
   $('trickSlot0').innerHTML='';$('trickSlot1').innerHTML='';
   const h=state.hand;if(!h)return;
 
-  const p0=getPlayed(h,0), p1=getPlayed(h,1);
-  const anyCurrentlyPlayed = p0||p1;
+  // Construir la lista completa de cartas a mostrar por asiento
+  // Bazas anteriores (opacidad reducida) + baza actual (plena)
+  const allT=h.allTricks||[];
+  const p0=getPlayed(h,0),p1=getPlayed(h,1);
 
-  if(anyCurrentlyPlayed){
-    // Baza en curso: mostrar cartas jugadas
+  // Monto de columnas: hasta 3 cartas apiladas ligeramente desplazadas
+  const slot0=$('trickSlot0'),slot1=$('trickSlot1');
+  slot0.style.cssText='position:relative;width:80px;min-height:114px;display:flex;align-items:center;justify-content:center;';
+  slot1.style.cssText='position:relative;width:80px;min-height:114px;display:flex;align-items:center;justify-content:center;';
+
+  // Renderizar bazas anteriores
+  allT.forEach((t,i)=>{
+    const offsets=[-22,-8,6]; // desplazamiento horizontal para apilar
+    const off=offsets[Math.min(i,offsets.length-1)];
     [0,1].forEach(seat=>{
-      const card=getPlayed(h,seat);
-      if(card){const el=buildCard(card);el.classList.add('land-anim');$(`trickSlot${seat}`).appendChild(el);}
+      const card=seat===0?t.c0:t.c1;
+      if(!card||card===EMPTY_CARD)return;
+      const el=buildCard(card);
+      el.style.cssText=`position:absolute;opacity:0.7;transform:translateX(${off}px) scale(0.88);z-index:${i+1};box-shadow:2px 2px 8px rgba(0,0,0,.5);`;
+      (seat===0?slot0:slot1).appendChild(el);
     });
-  } else {
-    // Baza aún no iniciada: mostrar la última baza resuelta si existe
-    const lt=h.lastTrick;
-    if(lt){
-      const lc0=lt.c0&&lt.c0!==EMPTY_CARD?lt.c0:null;
-      const lc1=lt.c1&&lt.c1!==EMPTY_CARD?lt.c1:null;
-      if(lc0||lc1){
-        [0,1].forEach(seat=>{
-          const card=seat===0?lc0:lc1;
-          if(card){
-            const el=buildCard(card);
-            el.style.opacity='0.55';
-            el.style.transform='scale(0.9)';
-            $(`trickSlot${seat}`).appendChild(el);
-          }
-        });
-      }
-    }
-  }
+  });
 
+  // Renderizar cartas de la baza actual (encima, opacidad plena)
+  [0,1].forEach(seat=>{
+    const card=seat===0?p0:p1;
+    if(!card)return;
+    const el=buildCard(card);
+    el.classList.add('land-anim');
+    el.style.cssText=`position:absolute;z-index:10;box-shadow:0 6px 20px rgba(0,0,0,.7);`;
+    (seat===0?slot0:slot1).appendChild(el);
+  });
+
+  // Dots de historial
   const info=$('centerInfo');info.innerHTML='';
   const hist=h.trickHistory||[];
   if(hist.length){
@@ -573,15 +604,12 @@ function renderTrick(state){
       else d.classList.add('lost');
       dots.appendChild(d);
     });
-    // Mostrar también quién ganó la última baza
-    if(hist.length>0){
-      const last=hist[hist.length-1];
-      const msg=document.createElement('div');
-      msg.style.cssText='font-size:11px;color:var(--muted);margin-top:4px;text-align:center;';
-      msg.textContent=last.winner===null?'Parda':`Baza ${hist.length}: J${last.winner} guanya`;
-      info.appendChild(msg);
-    }
-    info.insertBefore(dots, info.firstChild);
+    info.appendChild(dots);
+    const last=hist[hist.length-1];
+    const msg=document.createElement('div');
+    msg.style.cssText='font-size:11px;color:var(--muted);margin-top:4px;text-align:center;';
+    msg.textContent=last.winner===null?'Parda':`Baza ${hist.length}: J${last.winner} guanya`;
+    info.appendChild(msg);
   }
 }
 
@@ -679,7 +707,7 @@ function renderAll(room){
       $('waitingOverlay').classList.remove('hidden');
     }else{
       $('waitingOverlay').classList.add('hidden');
-      if(ready&&betweenTimer===null)startBetween();
+      if(ready&&betweenTimer===null)startBetween(buildScoreSummary(state));
     }
     return;
   }
