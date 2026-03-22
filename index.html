@@ -75,7 +75,10 @@
     <div id="rivalZone">
       <div class="rival-header">
         <div id="rivalName" class="player-name">—</div>
-        <div id="rivalTurnDot" class="turn-dot hidden"></div>
+        <svg id="rivalTimerRing" class="timer-ring hidden" viewBox="0 0 36 36">
+          <circle class="timer-ring-bg" cx="18" cy="18" r="15"/>
+          <circle id="rivalTimerArc" class="timer-ring-arc" cx="18" cy="18" r="15"/>
+        </svg>
       </div>
       <div id="rivalCards" class="rival-cards" data-count="0"></div>
     </div>
@@ -93,7 +96,13 @@
     <!-- Mi zona abajo -->
     <div id="myZone">
       <div id="myCards" class="my-cards"></div>
-      <div id="myName" class="player-name">—</div>
+      <div class="my-zone-header">
+        <svg id="myTimerRing" class="timer-ring hidden" viewBox="0 0 36 36">
+          <circle class="timer-ring-bg" cx="18" cy="18" r="15"/>
+          <circle id="myTimerArc" class="timer-ring-arc" cx="18" cy="18" r="15"/>
+        </svg>
+        <div id="myName" class="player-name">—</div>
+      </div>
     </div>
   </div>
 
