@@ -1,10 +1,10 @@
-// ─── Truc Valenciano · game.js ─────────────────────────────────────────────
+// --- Truc Valenciano · game.js ---------------------------------------------
 // Firebase borra nodos vacíos, null y false. Soluciones:
-//   • Claves de asiento: "_0","_1" (no "0","1" → array)
-//   • Manos: objeto {a,b,c} con las cartas
-//   • Cartas jugadas: guardadas en h.played como {p0:"carta",p1:"carta"}
+//   * Claves de asiento: "_0","_1" (no "0","1" -> array)
+//   * Manos: objeto {a,b,c} con las cartas
+//   * Cartas jugadas: guardadas en h.played como {p0:"carta",p1:"carta"}
 //     El nodo NUNCA se borra; se resetea con un marcador "~" entre bazas.
-//   • Contadores: almacenados +10 para que nunca sean 0.
+//   * Contadores: almacenados +10 para que nunca sean 0.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, get, set, push, remove, onValue, runTransaction, onDisconnect }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -21,9 +21,9 @@ const firebaseConfig = {
 initializeApp(firebaseConfig);
 const db = getDatabase();
 
-// ─── Key helpers ──────────────────────────────────────────────────────────────
-const K  = n => `_${n}`;          // seat: 0→"_0"
-const PK = n => `p${n}`;          // played key: 0→"p0"
+// --- Key helpers --------------------------------------------------------------
+const K  = n => `_${n}`;          // seat: 0->"_0"
+const PK = n => `p${n}`;          // played key: 0->"p0"
 const HKEYS = ['a','b','c'];
 const EMPTY_CARD = '~';            // marcador "no jugada" (valor no válido)
 
@@ -60,7 +60,7 @@ const INACT_MS  = 60*60*1000;
 const TURN_SECS = 30;
 const OFFSET    = 10; // scores/trickWins stored +10
 
-// ─── SVG palos ────────────────────────────────────────────────────────────────
+// --- SVG palos ----------------------------------------------------------------
 const SUIT_SVG = {
   oros:`<svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="12" stroke="currentColor" stroke-width="2" fill="rgba(176,125,16,.1)"/><circle cx="16" cy="16" r="7" stroke="currentColor" stroke-width="1.5" fill="rgba(176,125,16,.15)"/><circle cx="16" cy="16" r="3" fill="currentColor"/></svg>`,
   copas:`<svg viewBox="0 0 32 36" fill="none"><path d="M8 5 Q8 15 16 17 Q24 15 24 5 Z" stroke="currentColor" stroke-width="1.8" fill="rgba(181,42,42,.1)" stroke-linejoin="round"/><path d="M11 17 Q11 22 13.5 23.5 L13.5 28 M18.5 23.5 Q21 22 21 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M10 28 L22 28" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
@@ -80,7 +80,7 @@ const TRG=[
 ];
 const TR=(()=>{const m={};let s=100;for(const g of TRG){for(const c of g)m[c]=s;s-=10;}return m;})();
 
-// ─── Audio ────────────────────────────────────────────────────────────────────
+// --- Audio --------------------------------------------------------------------
 let _ac=null;
 const ac=()=>{if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();return _ac;};
 function tone(f,t,d,v,dl){try{const c=ac(),ts=c.currentTime+(dl||0);const o=c.createOscillator(),g=c.createGain();o.type=t||'sine';o.frequency.setValueAtTime(f,ts);g.gain.setValueAtTime(v||.15,ts);g.gain.exponentialRampToValueAtTime(.001,ts+(d||.1));o.connect(g);g.connect(c.destination);o.start(ts);o.stop(ts+(d||.1));}catch(e){}}
@@ -91,7 +91,7 @@ const sndTick =()=>tone(880,'square',.04,.06);
 const sndBtn  =()=>{tone(600,'sine',.04,.08);};
 const sndLose =()=>{tone(200,'sawtooth',.3,.12);tone(150,'sawtooth',.4,.1,.25);};
 
-// ─── Session ──────────────────────────────────────────────────────────────────
+// --- Session ------------------------------------------------------------------
 let roomRef=null,roomCode=null,mySeat=null;
 let unsubGame=null,unsubChat=null;
 let inactTimer=null,betweenTimer=null,turnTimer=null;
@@ -148,7 +148,7 @@ function resetInactivity(){
     localStorage.removeItem(LS.room);localStorage.removeItem(LS.seat);location.reload();},INACT_MS);
 }
 
-// ─── Default state ────────────────────────────────────────────────────────────
+// --- Default state ------------------------------------------------------------
 function defaultState(){
   return{version:7,status:'waiting',roomCode:'',
     players:{[K(0)]:null,[K(1)]:null},
@@ -159,7 +159,7 @@ function defaultState(){
 function buildDeck(){const c=[],n=[1,2,3,4,5,6,7,10,11,12];for(const s of SUIT_ORDER)for(const x of n)c.push(`${x}_${s}`);return c;}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
-// ─── Hand factory ─────────────────────────────────────────────────────────────
+// --- Hand factory -------------------------------------------------------------
 function makeHand(mano){
   const deck=shuffle(buildDeck());
   return{
@@ -181,7 +181,7 @@ function makeHand(mano){
 
 function getTrickIndex(h){return real(h?.trickIndex);}
 
-// ─── Game logic ───────────────────────────────────────────────────────────────
+// --- Game logic ---------------------------------------------------------------
 function handWinner(state){
   const h=state.hand;
   // Si alguien ganó 2 bazas ya está claro
@@ -192,22 +192,22 @@ function handWinner(state){
   const r1=hist.length>0?hist[0].winner:undefined; // null=parda, 0/1=ganador, undefined=no jugada
   const r2=hist.length>1?hist[1].winner:undefined;
   const r3=hist.length>2?hist[2].winner:undefined;
-  // Baza 1 parda → decide baza 2 (si baza 2 tb parda → mano)
+  // Baza 1 parda -> decide baza 2 (si baza 2 tb parda -> mano)
   if(r1===null){
     if(r2!==null&&r2!==undefined)return r2;
-    return state.mano; // baza 2 parda o no jugada → gana el mano
+    return state.mano; // baza 2 parda o no jugada -> gana el mano
   }
   // Baza 1 con ganador
   if(r1!==undefined){
-    // Baza 2 parda o no jugada → gana el de baza 1
+    // Baza 2 parda o no jugada -> gana el de baza 1
     if(r2===null||r2===undefined)return r1;
-    // Baza 2 mismo ganador → ese jugador gana
+    // Baza 2 mismo ganador -> ese jugador gana
     if(r2===r1)return r1;
-    // Baza 2 ganó el otro → desempate en baza 3
+    // Baza 2 ganó el otro -> desempate en baza 3
     if(r3!==null&&r3!==undefined)return r3;
-    // Baza 3 parda → gana el de baza 1 (tiene la primera victoria)
+    // Baza 3 parda -> gana el de baza 1 (tiene la primera victoria)
     if(r3===null)return r1;
-    return r1; // baza 3 no jugada aún → provisional
+    return r1; // baza 3 no jugada aún -> provisional
   }
   return state.mano;
 }
@@ -304,7 +304,7 @@ function resumeOffer(state){
   h.resume=null;
 }
 
-// ─── Firebase ─────────────────────────────────────────────────────────────────
+// --- Firebase -----------------------------------------------------------------
 async function mutate(fn){
   if(!roomRef)return null;
   try{
@@ -319,7 +319,7 @@ async function mutate(fn){
   }catch(e){console.error('mutate:',e);return null;}
 }
 
-// ─── Actions ──────────────────────────────────────────────────────────────────
+// --- Actions ------------------------------------------------------------------
 async function dealHand(){
   await mutate(state=>{
     if(!state.players?.[K(0)]||!state.players?.[K(1)])return false;
@@ -358,7 +358,7 @@ async function playCard(card){
       const plrName=state.players?.[K(mySeat)]?.name||`J${mySeat}`;
       pushLog(state,`${plrName} juga ${cardLabel(card)}.`);
       if(alreadyPlayed(h,other(mySeat))){
-        // Los dos han jugado → resolver baza (resolveTrick fija h.turn al ganador)
+        // Los dos han jugado -> resolver baza (resolveTrick fija h.turn al ganador)
         resolveTrick(state);
       }else{
         // Esperamos al rival
@@ -514,8 +514,8 @@ async function timeoutTurn(){
   });
 }
 
-// ─── Timers ───────────────────────────────────────────────────────────────────
-// ── Circular ring helpers ─────────────────────────────────────────────────────
+// --- Timers -------------------------------------------------------------------
+// -- Circular ring helpers -----------------------------------------------------
 const RING_C = 2*Math.PI*25; // r=25 for avatar rings // circumference for r=15
 function setRing(arcId,ringId,pct,phase){
   const arc=$(arcId);if(!arc)return;
@@ -609,7 +609,7 @@ function startBetween(summaryHtml){
   betweenTimer=setTimeout(()=>{tick();},3000); // 3s show summary first
 }
 
-// ─── Card builders ────────────────────────────────────────────────────────────
+// --- Card builders ------------------------------------------------------------
 function svgEl(suit,size){
   const tmp=document.createElement('span');tmp.innerHTML=SUIT_SVG[suit]||'';
   const svg=tmp.firstElementChild;
@@ -631,7 +631,7 @@ function buildCard(card){
 }
 function buildBack(){const el=document.createElement('div');el.className='card-back';return el;}
 
-// ── Show action label in center of table ──────────────────────────────────────
+// -- Show action label in center of table --------------------------------------
 function showTableMsg(text){
   // Show locally
   _showTableMsgLocal(text);
@@ -664,9 +664,9 @@ function animatePlay(cardEl,card,onDone){
   fly.addEventListener('animationend',()=>{fly.remove();if(onDone)onDone();},{once:true});
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// --- Render -------------------------------------------------------------------
 
-// ─── Score summary for between-hands overlay ─────────────────────────────────
+// --- Score summary for between-hands overlay ---------------------------------
 function buildScoreSummary(state){
   const logs=state.logs||[];
   const p0=pName(state,0),p1=pName(state,1);
@@ -930,7 +930,7 @@ function detectSounds(state){
   prevEnvSt=h.envit.state||'none';prevTrucSt=h.truc.state||'none';
 }
 
-// ─── Presence / disconnect ────────────────────────────────────────────────────
+// --- Presence / disconnect ----------------------------------------------------
 let _absenceTimer=null;
 function checkPresence(){
   if(!roomCode||mySeat===null)return;
@@ -956,7 +956,7 @@ function checkPresence(){
   }).catch(()=>{});
 }
 
-// ─── MAIN RENDER ──────────────────────────────────────────────────────────────
+// --- MAIN RENDER --------------------------------------------------------------
 function renderAll(room){
   const state=room?.state||defaultState();
   resetInactivity();detectSounds(state);_lastState=state;
@@ -1061,7 +1061,7 @@ function renderAll(room){
 }
 
 
-// ─── Confetti ─────────────────────────────────────────────────────────────────
+// --- Confetti -----------------------------------------------------------------
 let confettiRAF=null;
 function startConfetti(iWon){
   const canvas=$('confettiCanvas');if(!canvas)return;
@@ -1100,13 +1100,13 @@ function stopConfetti(){
   const canvas=$('confettiCanvas');if(canvas){const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);}
 }
 
-// ─── Rematch ──────────────────────────────────────────────────────────────────
+// --- Rematch ------------------------------------------------------------------
 async function requestRematch(){
   if(!roomRef||mySeat===null)return;
   await mutate(state=>{
     if(!state.rematch)state.rematch={[K(0)]:false,[K(1)]:false};
     state.rematch[K(mySeat)]=true;
-    // Si ambos quieren revancha → resetear partida
+    // Si ambos quieren revancha -> resetear partida
     if(state.rematch[K(0)]&&state.rematch[K(1)]){
       state.status='waiting';
       state.scores={[K(0)]:OFFSET,[K(1)]:OFFSET};
@@ -1136,7 +1136,7 @@ function renderRematchStatus(state){
   }
 }
 
-// ─── Chat ─────────────────────────────────────────────────────────────────────
+// --- Chat ---------------------------------------------------------------------
 function initChat(code){
   if(unsubChat)unsubChat();
   unsubChat=onValue(ref(db,`rooms/${code}/chat`),snap=>{
@@ -1160,9 +1160,9 @@ async function sendChat(){
   await push(ref(db,`rooms/${roomCode}/chat`),{seat:mySeat,name:myName,text,at:Date.now()});
 }
 
-// ─── Room ─────────────────────────────────────────────────────────────────────
+// --- Room ---------------------------------------------------------------------
 
-// ─── Avatars ──────────────────────────────────────────────────────────────────
+// --- Avatars ------------------------------------------------------------------
 const AVATAR_SVGS=['<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="30" r="30" fill="#2a6496"/><circle cx="30" cy="24" r="13" fill="#fcd29f"/><circle cx="25" cy="22" r="2" fill="#3d2000"/><circle cx="35" cy="22" r="2" fill="#3d2000"/><circle cx="26" cy="21" r="0.8" fill="#fff"/><circle cx="36" cy="21" r="0.8" fill="#fff"/><path d="M25 29 Q30 34 35 29" stroke="#c0703a" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M20 16 Q23 12 30 13 Q37 12 40 16" stroke="#7a4a10" stroke-width="2.5" fill="#5a3008"/><rect x="8" y="40" width="44" height="22" rx="11" fill="#1a4a7a"/><path d="M20 40 Q30 46 40 40" fill="#fcd29f"/></svg>', '<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="30" r="30" fill="#8b2252"/><circle cx="30" cy="24" r="13" fill="#fde3c8"/><circle cx="25" cy="22" r="2" fill="#3d2000"/><circle cx="35" cy="22" r="2" fill="#3d2000"/><circle cx="26" cy="21" r="0.8" fill="#fff"/><circle cx="36" cy="21" r="0.8" fill="#fff"/><path d="M25 30 Q30 35 35 30" stroke="#d05070" stroke-width="1.8" fill="none" stroke-linecap="round"/><ellipse cx="30" cy="13" rx="13" ry="5" fill="#d4800a"/><rect x="8" y="40" width="44" height="22" rx="11" fill="#6b1040"/><path d="M20 40 Q30 46 40 40" fill="#fde3c8"/></svg>', '<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="30" r="30" fill="#2e7d32"/><circle cx="30" cy="24" r="13" fill="#ffe0b2"/><circle cx="25" cy="22" r="2" fill="#1a1a1a"/><circle cx="35" cy="22" r="2" fill="#1a1a1a"/><circle cx="26" cy="21" r="0.8" fill="#fff"/><circle cx="36" cy="21" r="0.8" fill="#fff"/><path d="M24 29 Q30 33 36 29" stroke="#b55a00" stroke-width="1.8" fill="none" stroke-linecap="round"/><rect x="17" y="12" width="26" height="7" rx="3" fill="#1a1a1a"/><rect x="8" y="40" width="44" height="22" rx="11" fill="#1b5e20"/><path d="M20 40 Q30 46 40 40" fill="#ffe0b2"/></svg>', '<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="30" r="30" fill="#e65100"/><circle cx="30" cy="24" r="13" fill="#ffd7a8"/><circle cx="25" cy="21" r="2.2" fill="#1a1a1a"/><circle cx="35" cy="21" r="2.2" fill="#1a1a1a"/><circle cx="26" cy="20" r="0.9" fill="#fff"/><circle cx="36" cy="20" r="0.9" fill="#fff"/><ellipse cx="30" cy="26" rx="2" ry="1.2" fill="#c8704a"/><path d="M24 29 Q30 35 36 29" stroke="#b54020" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M22 18 Q24 14 30 15 Q36 14 38 18" stroke="#5a2a00" stroke-width="2" fill="none"/><rect x="8" y="40" width="44" height="22" rx="11" fill="#bf360c"/><path d="M20 40 Q30 46 40 40" fill="#ffd7a8"/></svg>'];
 let myAvatar=Number(localStorage.getItem('truc_avatar')||0);
 
@@ -1258,7 +1258,7 @@ async function leaveRoom(){
   localStorage.removeItem(LS.room);localStorage.removeItem(LS.seat);location.reload();
 }
 
-// ─── Events ───────────────────────────────────────────────────────────────────
+// --- Events -------------------------------------------------------------------
 $('createBtn').addEventListener('click',createRoom);
 $('joinBtn').addEventListener('click',joinRoom);
 $('leaveBtn').addEventListener('click',leaveRoom);
@@ -1290,7 +1290,7 @@ $('chatToggle').addEventListener('click',()=>{
 $('chatSend').addEventListener('click',sendChat);
 $('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
 
-// ─── Boot ─────────────────────────────────────────────────────────────────────
+// --- Boot ---------------------------------------------------------------------
 // Attach avatar click listeners via JS (module scope)
 document.querySelectorAll('.av-opt').forEach((el,i)=>{
   el.addEventListener('click',()=>pickAvatar(i));
