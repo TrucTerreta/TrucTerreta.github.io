@@ -364,3 +364,31 @@ h1 .hi { color: var(--gold); }
 /* Fix lobby z-index so lobby-wrap sits above the blur layer */
 #screenLobby { position: relative; }
 #screenLobby .lobby-wrap { position: relative; z-index: 2; }
+
+/* ── RIVAL TURN INDICATOR ── */
+.rival-header {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+}
+.turn-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(232,171,42,.8), 0 0 16px rgba(232,171,42,.4);
+  animation: dotPulse 1s ease-in-out infinite;
+}
+.turn-dot.hidden { display: none !important; }
+@keyframes dotPulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.4); opacity: .6; }
+}
+
+/* ── MY TURN INDICATOR on action panel ── */
+#statusMsg.my-turn {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ── Trick stack card sizing ── */
+.trick-slot {
+  width: 100px !important;
+  min-height: 120px;
+}
