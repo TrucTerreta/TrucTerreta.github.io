@@ -568,22 +568,38 @@ function startTurnTimer(isMyTurn, state){
     },1000);
   },50);
 }
-function stopBetween(){clearInterval(betweenTimer);betweenTimer=null;$('countdownOverlay').classList.add('hidden');}
+function stopBetween(){
+  clearInterval(betweenTimer);betweenTimer=null;
+  $('countdownOverlay').classList.add('hidden');
+}
+function _showCountdownMsg(text){
+  let el=$('tableCdEl');
+  if(!el){
+    el=document.createElement('div');el.id='tableCdEl';el.className='table-cd-msg';
+    const cz=document.getElementById('centerZone');
+    if(cz)cz.appendChild(el);
+  }
+  el.innerHTML=text;
+  el.classList.remove('table-cd-anim');
+  void el.offsetWidth;
+  el.classList.add('table-cd-anim');
+}
 function startBetween(summaryHtml){
   stopBetween();
-  const ov=$('countdownOverlay'),num=$('countdownNum'),lbl=$('countdownLabel');
-  // Mostrar resumen (se mantiene durante toda la cuenta atrás)
+  // Show summary in the overlay (small card at bottom)
+  const ov=$('countdownOverlay'),lbl=$('countdownLabel'),num=$('countdownNum');
   if(lbl&&summaryHtml){lbl.innerHTML=summaryHtml;}
   num.textContent='';
   ov.classList.remove('hidden');
-  // 3s solo resumen, luego 5s cuenta atrás (resumen permanece visible)
-  betweenTimer=setTimeout(()=>{
-    let n=5;num.textContent=n;
-    // lbl NO se cambia — el resumen permanece
-    betweenTimer=setInterval(async()=>{n--;sndTick();
-      if(n>0)num.textContent=n;else{stopBetween();if(mySeat===0)await dealHand();}
-    },1000);
-  },3000);
+  // Countdown in center of table, like a trucar/envit message
+  let n=5;
+  function tick(){
+    _showCountdownMsg(`<div class="cd-subtitle">Següent mà en…</div><div class="cd-number">${n}</div>`);
+    if(n<=0){stopBetween();if(mySeat===0)dealHand();return;}
+    n--;sndTick();
+    betweenTimer=setTimeout(tick,1000);
+  }
+  betweenTimer=setTimeout(tick,3000); // 3s show summary first
 }
 
 // ─── Card builders ────────────────────────────────────────────────────────────
@@ -610,10 +626,21 @@ function buildBack(){const el=document.createElement('div');el.className='card-b
 
 // ── Show action label in center of table ──────────────────────────────────────
 function showTableMsg(text){
+  // Show locally
+  _showTableMsgLocal(text);
+  // Write to Firebase so rival sees it too
+  if(roomRef)set(ref(db,`rooms/${roomCode}/msg`),{text,at:Date.now()}).catch(()=>{});
+}
+function _showTableMsgLocal(text){
   let el=$('tableMsgEl');
-  if(!el){el=document.createElement('div');el.id='tableMsgEl';el.className='table-msg';document.getElementById('centerZone').appendChild(el);}
-  el.textContent=text;el.classList.remove('table-msg-anim');
-  void el.offsetWidth; // reflow
+  if(!el){
+    el=document.createElement('div');el.id='tableMsgEl';el.className='table-msg';
+    const cz=document.getElementById('centerZone');
+    if(cz)cz.appendChild(el);else document.body.appendChild(el);
+  }
+  el.textContent=text+'!';
+  el.classList.remove('table-msg-anim');
+  void el.offsetWidth;
   el.classList.add('table-msg-anim');
 }
 
@@ -801,11 +828,6 @@ function renderTrick(state){
       dots.appendChild(d);
     });
     info.appendChild(dots);
-    const last=hist[hist.length-1];
-    const msg=document.createElement('div');
-    msg.style.cssText='font-size:11px;color:var(--muted);margin-top:4px;text-align:center;';
-    if(last.winner===null){msg.textContent='Empat';msg.classList.add('baza-empat');}else{const wn=_lastState?pName(_lastState,last.winner):'J'+last.winner;msg.textContent=`Baza ${hist.length}: ${wn} guanya`;}
-    info.appendChild(msg);
   }
 }
 
@@ -873,15 +895,15 @@ function updateRivalTimer(state){
 
 function renderHUD(state){
   $('hudRoom').textContent=`Sala ${roomCode||'—'}`;
-  $('hudSeat').textContent=`${pName(state,mySeat)} (J${mySeat})`;
+  $('hudSeat').textContent=pName(state,mySeat);
   // Show my score first, then rival's
   $('hudScore0').textContent=String(getScore(state,mySeat));
   $('hudScore1').textContent=String(getScore(state,other(mySeat)));
   $('hudState').textContent=state.status==='waiting'?'Esperando':state.status==='playing'?'En juego':'Terminada';
-  $('siMano').textContent=`J${state.mano}${state.mano===mySeat?' (tú)':''}`;
+  // Turno: show whose turn it is
+  const turnPlayer=state.hand?pName(state,state.hand.turn):pName(state,state.mano);
+  $('siMano').textContent=turnPlayer;
   $('siHand').textContent=String(real(state.handNumber||OFFSET));
-  const tw=state.hand?.trickWins;
-  $('siBazas').textContent=tw?`${getTW(state.hand,0)}-${getTW(state.hand,1)}`:'0-0';
 }
 
 function renderLog(state){
@@ -901,16 +923,46 @@ function detectSounds(state){
   prevEnvSt=h.envit.state||'none';prevTrucSt=h.truc.state||'none';
 }
 
+// ─── Presence / disconnect ────────────────────────────────────────────────────
+let _absenceTimer=null;
+function checkPresence(){
+  if(!roomCode||mySeat===null)return;
+  get(ref(db,`rooms/${roomCode}/presence/${K(other(mySeat))}`)).then(snap=>{
+    const p=snap.val();
+    const absent=p?.absent===true;
+    const notif=$('absenceNotif');
+    if(notif)notif.classList.toggle('hidden',!absent);
+    if(absent&&!_absenceTimer){
+      _absenceTimer=setTimeout(async()=>{
+        // Give win to me after 60s
+        await mutate(state=>{
+          if(state.status==='game_over')return false;
+          state.status='game_over';
+          state.winner=mySeat;
+          pushLog(state,pName(state,other(mySeat))+' ha abandonat. Guanyes!');
+          return true;
+        });
+      },60000);
+    }else if(!absent&&_absenceTimer){
+      clearTimeout(_absenceTimer);_absenceTimer=null;
+    }
+  }).catch(()=>{});
+}
+
 // ─── MAIN RENDER ──────────────────────────────────────────────────────────────
 function renderAll(room){
   const state=room?.state||defaultState();
   resetInactivity();detectSounds(state);_lastState=state;
+  checkPresence();
+  renderAvatars(room);
   // Reset render cache when hand changes so new cards animate in properly
   const hKey=real(state.handNumber||OFFSET)+'-'+(state.hand?.mano??'x');
   if(hKey!==(_prevHandKey||'')){_prevHandsKey='';_prevTrickKey='';_prevHandKey=hKey;}
   renderHUD(state);
   $('myName').textContent=pName(state,mySeat);
   $('rivalName').textContent=pName(state,other(mySeat));
+  // Sync avatar selection UI
+  document.querySelectorAll('.av-opt').forEach((el,i)=>el.classList.toggle('av-selected',i===myAvatar));
   renderRivalCards(state.hand?.hands?.[K(other(mySeat))]);
   updateRivalTimer(state);
   renderMyCards(state);
@@ -1099,11 +1151,55 @@ async function sendChat(){
 }
 
 // ─── Room ─────────────────────────────────────────────────────────────────────
+
+// ─── Avatars ──────────────────────────────────────────────────────────────────
+const AVATAR_SVGS=['<svg viewBox="0 0 60 60"><circle cx="30" cy="22" r="14" fill="#f0b429"/><circle cx="25" cy="20" r="2" fill="#333"/><circle cx="35" cy="20" r="2" fill="#333"/><path d="M24 28 Q30 34 36 28" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="0" y="42" width="60" height="20" rx="10" fill="#2ea043"/></svg>', '<svg viewBox="0 0 60 60"><circle cx="30" cy="22" r="14" fill="#da3633"/><circle cx="25" cy="20" r="2.5" fill="#fff"/><circle cx="35" cy="20" r="2.5" fill="#fff"/><path d="M24 29 Q30 35 36 29" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="0" y="42" width="60" height="20" rx="10" fill="#388bfd"/></svg>', '<svg viewBox="0 0 60 60"><circle cx="30" cy="22" r="14" fill="#e040fb"/><circle cx="25" cy="19" r="2" fill="#333"/><circle cx="35" cy="19" r="2" fill="#333"/><path d="M26 27 Q30 23 34 27" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M16 16 Q22 8 30 10 Q38 8 44 16" stroke="#c004d0" stroke-width="3" fill="none"/><rect x="0" y="42" width="60" height="20" rx="10" fill="#c004d0"/></svg>', '<svg viewBox="0 0 60 60"><circle cx="30" cy="22" r="14" fill="#f08030"/><circle cx="24" cy="19" r="2.5" fill="#333"/><circle cx="36" cy="19" r="2.5" fill="#333"/><path d="M24 29 Q30 34 36 29" stroke="#333" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="30" cy="8" r="5" fill="#f08030" stroke="#c05000" stroke-width="1.5"/><rect x="0" y="42" width="60" height="20" rx="10" fill="#c05000"/></svg>'];
+let myAvatar=Number(localStorage.getItem('truc_avatar')||0);
+
+function pickAvatar(idx){
+  myAvatar=idx;
+  localStorage.setItem('truc_avatar',idx);
+  document.querySelectorAll('.av-opt').forEach((el,i)=>el.classList.toggle('av-selected',i===idx));
+  // Save to Firebase if in session
+  if(roomRef&&mySeat!==null){
+    set(ref(db,`rooms/${roomCode}/avatars/${K(mySeat)}`),idx).catch(()=>{});
+  }
+}
+function getAvatarSvg(idx){return AVATAR_SVGS[idx]||AVATAR_SVGS[0];}
+
+function renderAvatars(room){
+  const avs=room?.avatars||{};
+  const myIdx=Number(avs[K(mySeat)]??myAvatar);
+  const rivIdx=Number(avs[K(other(mySeat))]??0);
+  const myEl=$('myAv'),rivEl=$('rivalAv');
+  if(myEl)myEl.innerHTML=getAvatarSvg(myIdx);
+  if(rivEl)rivEl.innerHTML=getAvatarSvg(rivIdx);
+}
+
+let unsubMsg=null;
 function startSession(code){
   roomCode=code;roomRef=ref(db,`rooms/${code}`);
   if(unsubGame)unsubGame();
   unsubGame=onValue(roomRef,snap=>renderAll(snap.val()));
   initChat(code);
+  // Listen for table messages (sent by either player)
+  if(unsubMsg)unsubMsg();
+  let lastMsgAt=0;
+  unsubMsg=onValue(ref(db,`rooms/${code}/msg`),snap=>{
+    const m=snap.val();
+    if(m&&m.at>lastMsgAt&&m.at>Date.now()-5000){
+      lastMsgAt=m.at;
+      _showTableMsgLocal(m.text);
+    }
+  });
+  // Presence: mark player as connected; on disconnect mark absent
+  if(mySeat!==null){
+    const presRef=ref(db,`rooms/${code}/presence/${K(mySeat)}`);
+    const {onDisconnect:fbDisconnect}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+    const disc=fbDisconnect(presRef);
+    disc.set({absent:true,at:Date.now()}).catch(()=>{});
+    set(presRef,{absent:false,at:Date.now()}).catch(()=>{});
+  }
   $('screenLobby').classList.add('hidden');$('screenGame').classList.remove('hidden');
 }
 function setLobbyMsg(txt,cls){const el=$('lobbyMsg');el.textContent=txt;el.className='lobby-msg'+(cls?' '+cls:'');}
@@ -1118,6 +1214,7 @@ async function createRoom(){
   init.logs=[{text:`Sala creada per ${name}.`,at:Date.now()}];
   await set(r,{meta:{createdAt:Date.now(),roomCode:code},state:init,lastActivity:Date.now()});
   mySeat=0;saveLS(name,code,0);$('roomInput').value=code;
+  set(ref(db,`rooms/${code}/avatars/${K(0)}`),myAvatar).catch(()=>{});
   setLobbyMsg(`Sala ${code} creada.`,'good');startSession(code);
 }
 
