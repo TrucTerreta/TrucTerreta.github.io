@@ -818,13 +818,15 @@ h1 .hi { color: var(--gold); }
   text-align: center; margin-bottom: 8px; font-style: italic;
 }
 
-/* -- Game over overlay: transparent so cards show through -- */
+/* -- Game over overlay: very transparent so cards show through -- */
 #gameOverOverlay {
-  background: rgba(0,0,0,.45) !important;
-  backdrop-filter: blur(2px) !important;
-  -webkit-backdrop-filter: blur(2px) !important;
+  background: rgba(0,0,0,.25) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: auto;
 }
 #gameOverOverlay .overlay-card {
-  background: rgba(10,20,14,.82) !important;
-  border: 1px solid rgba(255,255,255,.15) !important;
+  background: rgba(8,16,12,.78) !important;
+  border: 1px solid rgba(255,255,255,.18) !important;
+  box-shadow: 0 8px 40px rgba(0,0,0,.7) !important;
 }
