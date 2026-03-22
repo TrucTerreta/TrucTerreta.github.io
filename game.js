@@ -261,7 +261,8 @@ function resolveTrick(state){
   if(c0&&c1){const cmp=cmpTrick(c0,c1);w=cmp>0?0:cmp<0?1:null;}
   const idx=getTrickIndex(h);
   const lead=h.trickLead??state.mano;
-  h.trickHistory=(h.trickHistory||[]).concat([{i:idx+1,c0,c1,winner:w,lead}]);
+  // Store draw as winner=99 (null would be deleted by Firebase)
+  h.trickHistory=(h.trickHistory||[]).concat([{i:idx+1,c0,c1,winner:w===null?99:w,lead}]);
   if(w!==null){
     addTW(h,w);h.turn=w;
     const wn=state.players?.[K(w)]?.name||`J${w}`;
@@ -284,11 +285,15 @@ function resolveTrick(state){
   const hist=h.trickHistory||[];
   // Terminar mano si: 2 bazas ganadas, o 3 bazas jugadas,
   // o baza 1 fue parda y baza 2 tiene ganador (el ganador de b2 gana)
-  const b1Draw=hist.length>=1&&hist[0].winner===null;
-  const b2Draw=hist.length>=2&&hist[1].winner===null;
-  const b2HasWinner=hist.length>=2&&hist[1].winner!==null;
+  // winner===99 means DRAW (null is deleted by Firebase)
+  const isDraw=w=>w===99||w===null||w===undefined;
+  const hasWinner=w=>w!==99&&w!==null&&w!==undefined;
+  const b1Draw=hist.length>=1&&isDraw(hist[0].winner);
+  const b2Draw=hist.length>=2&&isDraw(hist[1].winner);
+  const b2HasWinner=hist.length>=2&&hasWinner(hist[1].winner);
+  const b1HasWinner=hist.length>=1&&hasWinner(hist[0].winner);
   // End if: 2 wins, 3 tricks, b1draw+b2winner, or b1winner+b2draw
-  const handOver=w0>=2||w1>=2||tIdx>=3||(b1Draw&&b2HasWinner)||((!b1Draw&&hist.length>=1&&hist[0].winner!==null)&&b2Draw);
+  const handOver=w0>=2||w1>=2||tIdx>=3||(b1Draw&&b2HasWinner)||(b1HasWinner&&b2Draw);
   if(handOver){
     const hw=handWinner(state);
     // hw is 0 or 1 — use state.players directly (we're inside the transaction)
@@ -341,11 +346,18 @@ async function playCard(card){
       if(!h||state.status!=='playing'||h.status!=='in_progress')return false;
       if(h.mode!=='normal'||h.pendingOffer)return false;
       if(h.turn!==mySeat)return false;
-      // Safety: abort if hand should already be over (b1 draw + b2 winner)
+      // Safety: abort if hand should already be over
+      // b1draw+b2win OR b1win+b2draw = hand is decided, no 3rd trick needed
       const _hist=h.trickHistory||[];
-      const _b1Draw=_hist.length>=1&&_hist[0].winner===null;
-      const _b2Win=_hist.length>=2&&_hist[1].winner!==null;
-      if(_b1Draw&&_b2Win)return false; // hand already decided
+      const _r1=_hist.length>0?_hist[0].winner:undefined;
+      const _r2=_hist.length>1?_hist[1].winner:undefined;
+      const _isDraw=w=>w===99||w===null||w===undefined;
+      const _isWin=w=>w===0||w===1;
+      const _b1Draw=_hist.length>=1&&_isDraw(_r1)&&_r1!==undefined;
+      const _b2Win=_hist.length>=2&&_isWin(_r2);
+      const _b1Win=_hist.length>=1&&_isWin(_r1);
+      const _b2Draw=_hist.length>=2&&_isDraw(_r2)&&_r2!==undefined;
+      if((_b1Draw&&_b2Win)||(_b1Win&&_b2Draw))return false; // hand already decided
       // Guardia: ¿ya jugó en esta baza?
       if(alreadyPlayed(h,mySeat)){console.warn('PLAYCARD: already played');return false;}
       const mine=fromHObj(h.hands?.[K(mySeat)]);
@@ -438,7 +450,8 @@ async function respondEnvit(choice){
     if(choice==='no_vull'){
       h.envit={state:'rejected',caller,responder:resp,acceptedLevel:0,acceptedBy:null};
       addSA(h,caller);h.envitAvailable=false;
-      pushLog(state,`Envit rebutjat. +1 J${caller}.`);resumeOffer(state);return true;
+      const callerName0=state.players?.[K(caller)]?.name||`J${caller}`;
+      pushLog(state,`Envit rebutjat. +1 ${callerName0}.`);resumeOffer(state);return true;
     }
     if(choice==='torne'){
       if(offer.level!==2)return false;
@@ -469,7 +482,8 @@ async function respondTruc(choice){
     if(choice==='no_vull'){
       h.truc={state:'rejected',caller,responder:resp,acceptedLevel:0,acceptedBy:null};
       addSA(h,caller);h.envitAvailable=false;
-      pushLog(state,`Truc rebutjat. +1 J${caller}. Mà perduda.`);
+      const callerName1=state.players?.[K(caller)]?.name||`J${caller}`;
+      pushLog(state,`Truc rebutjat. +1 ${callerName1}. Ma perduda.`);
       applyHandEnd(state,'No vull al truc.');return true;
     }
     if(choice==='retruque'){
@@ -683,25 +697,46 @@ function buildScoreSummary(state){
   const rows=[];
   for(const l of handLogs){
     const txt=l.text||'';
-    const m=txt.match(/\(\+(\d+)\)/);
+    // Match (+N) with or without parens, or just +N before space/end
+    const m=txt.match(/\(\+(\d+)\)/)||txt.match(/\+(\d+)(?=[^\d]|$)/);
     if(!m)continue;
     const pts=Number(m[1]);
     let label='',winner='';
-    if(txt.includes('Envit')&&txt.includes('guanya')){
-      winner=txt.includes(p0)?p0:p1;
+    // Determine winner: check name match OR J0/J1 pattern OR +N for p0/p1
+    const hasP0name=p0.length>1&&txt.includes(p0);
+    const hasP1name=p1.length>1&&txt.includes(p1);
+    const hasJ0=txt.match(/\bJ0\b/);
+    const hasJ1=txt.match(/\bJ1\b/);
+    // If both names appear (eg "Pepe +1 per Manolo"), pick the one after "per" or "per"
+    const guessWinner=()=>{
+      if(hasP0name&&!hasP1name)return p0;
+      if(hasP1name&&!hasP0name)return p1;
+      if(hasJ0&&!hasJ1)return p0;
+      if(hasJ1&&!hasJ0)return p1;
+      return p0; // fallback
+    };
+    // Detect event type from log text
+    if(txt.includes('Envit')&&(txt.includes('guanya')||txt.includes('acceptat'))){
+      winner=guessWinner();
       label=`Envit guanyat per <b>${winner}</b>`;
-    }else if(txt.includes('Truc')&&txt.includes('guanya')){
-      winner=txt.includes(p0)?p0:p1;
+    }else if(txt.includes('Envit')&&txt.includes('rebutjat')){
+      winner=guessWinner();
+      label=`No vull l'envit — +1 per <b>${winner}</b>`;
+    }else if((txt.includes('Truc')||txt.includes('truc')||txt.includes('Retruque')||txt.includes('Val 4'))&&(txt.includes('guanya')||txt.includes('acceptat'))){
+      winner=guessWinner();
       label=`Truc guanyat per <b>${winner}</b>`;
-    }else if((txt.includes('Mà')&&txt.includes('guanyada'))||txt.includes('guanyat')){
-      winner=txt.includes(p0)?p0:p1;
+    }else if((txt.includes('Truc')||txt.includes('truc'))&&txt.includes('rebutjat')){
+      winner=guessWinner();
+      label=`No vull el truc — +1 per <b>${winner}</b>`;
+    }else if(txt.includes('Mà guanyada')||txt.includes('guanyada')){
+      winner=guessWinner();
       label=`Mà guanyada per <b>${winner}</b>`;
     }else if(txt.includes('mazo')||txt.includes('Mazo')){
-      winner=txt.includes(p0)?p0:p1;
-      label=`Al mazo, punt per <b>${winner}</b>`;
-    }else if(txt.includes('rebutjat')||txt.includes('rejected')){
-      winner=txt.includes(p0)?p0:p1;
-      label=`Rebutjat, punt per <b>${winner}</b>`;
+      winner=guessWinner();
+      label=`Al mazo — punt per <b>${winner}</b>`;
+    }else if(txt.includes('rebutjat')){
+      winner=guessWinner();
+      label=`Rebutjat — punt per <b>${winner}</b>`;
     }else{continue;}
     if(winner===p0)pts0+=pts;else pts1+=pts;
     rows.push(`<div class="sum-row"><span class="sum-label">${label}</span><span class="sum-pts">+${pts}</span></div>`);
@@ -736,7 +771,11 @@ function renderMyCards(state){
   const h=state.hand,z=$('myCards');if(!h){z.innerHTML='';return;}
   const myCards=fromHObj(h.hands?.[K(mySeat)]);
   const played=alreadyPlayed(h,mySeat);
-  const canPlay=!played&&!uiLocked&&h.turn===mySeat&&h.mode==='normal'&&!h.pendingOffer&&state.status==='playing'&&h.status==='in_progress';
+  // Block play if hand should already be over (b1 draw + b2 winner)
+  const _ch=h.trickHistory||[];
+  const _handDecided=(_ch.length>=1&&_ch[0].winner===null&&_ch.length>=2&&_ch[1].winner!==null)||
+                     (_ch.length>=1&&_ch[0].winner!==null&&_ch.length>=2&&_ch[1].winner===null);
+  const canPlay=!played&&!uiLocked&&h.turn===mySeat&&h.mode==='normal'&&!h.pendingOffer&&state.status==='playing'&&h.status==='in_progress'&&!_handDecided;
   // Skip full rebuild if hand cards haven't changed (prevents flash)
   const handsKey=myCards.join(',')+'|'+canPlay;
   if(handsKey===_prevHandsKey&&z.children.length===myCards.length)return;
@@ -829,7 +868,7 @@ function renderTrick(state){
     const dots=document.createElement('div');dots.className='trick-history-dots';
     hist.forEach(t=>{
       const d=document.createElement('div');d.className='trick-dot';
-      if(t.winner===null)d.classList.add('draw');
+      if(t.winner===99||t.winner===null)d.classList.add('draw');
       else if(t.winner===mySeat)d.classList.add('won');
       else d.classList.add('lost');
       dots.appendChild(d);
@@ -1167,6 +1206,8 @@ const AVATAR_SVGS=['<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
 let myAvatar=Number(localStorage.getItem('truc_avatar')||0);
 
 function pickAvatar(idx){
+  // Don't allow picking rival's avatar
+  if(idx===_rivalAvatarIdx&&_rivalAvatarIdx>=0)return;
   myAvatar=idx;
   localStorage.setItem('truc_avatar',String(idx));
   document.querySelectorAll('.av-opt').forEach((el,i)=>el.classList.toggle('av-selected',i===idx));
@@ -1176,15 +1217,31 @@ function pickAvatar(idx){
 }
 // Expose globally so HTML onclick works AND attach via JS
 window.pickAvatar=pickAvatar;
+
+function getRivalAvatar(){
+  if(!roomRef||mySeat===null)return -1;
+  // Read from last known state
+  return _rivalAvatarIdx;
+}
+
+let _rivalAvatarIdx=-1;
 function getAvatarSvg(idx){return AVATAR_SVGS[idx]||AVATAR_SVGS[0];}
 
 function renderAvatars(room){
   const avs=room?.avatars||{};
   const myIdx=Number(avs[K(mySeat)]??myAvatar);
-  const rivIdx=Number(avs[K(other(mySeat))]??0);
+  const rivIdx=Number(avs[K(other(mySeat))]??-1);
+  _rivalAvatarIdx=rivIdx;
   const myEl=$('myAv'),rivEl=$('rivalAv');
   if(myEl)myEl.innerHTML=getAvatarSvg(myIdx);
-  if(rivEl)rivEl.innerHTML=getAvatarSvg(rivIdx);
+  if(rivEl&&rivIdx>=0)rivEl.innerHTML=getAvatarSvg(rivIdx);
+  // Gray out avatar options that the rival has chosen
+  document.querySelectorAll('.av-opt').forEach((el,i)=>{
+    const takenByRival=i===rivIdx&&rivIdx>=0;
+    el.classList.toggle('av-taken',takenByRival);
+    el.style.opacity=takenByRival?'0.3':'1';
+    el.title=takenByRival?'Aquest avatar l\'usa el teu rival':'';
+  });
 }
 
 let unsubMsg=null;
