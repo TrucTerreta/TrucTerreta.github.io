@@ -392,3 +392,14 @@ h1 .hi { color: var(--gold); }
   width: 100px !important;
   min-height: 120px;
 }
+
+/* ── GAME OVER ── */
+.go-rematch-status {
+  font-size: 12px; color: var(--muted); text-align: center;
+  min-height: 16px; margin-top: 4px;
+}
+#gameOverOverlay .overlay-card {
+  background: rgba(10,18,14,.95) !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+}
+#goTitle { font-size: 22px; font-weight: 900; color: var(--gold); letter-spacing: -0.5px; }
