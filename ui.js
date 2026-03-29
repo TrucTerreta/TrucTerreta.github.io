@@ -69,28 +69,17 @@ window.initChatPhrases = function() {
     menu.appendChild(btn);
   });
 };
-
 window.sendPhrase = function(text) {
-  if (!window.canChat) return;
+  if (!window.canChat || !session.roomCode) return;
 
   // 1. Mostrar en MI pantalla
   window.showBubble('myBubble', text);
-  
-  // 2. ENVIAR AL RIVAL
-if (typeof socket !== 'undefined') {
-  socket.emit('enviar_frase', { frase: text });
-}
 
-// 3. RECIBIR DEL RIVAL (Pégalo aquí mismo)
-if (typeof socket !== 'undefined') {
-  socket.on('recibir_frase', (data) => {
-      if (window.showBubble) {
-          window.showBubble('rivalBubble', data.frase);
-      }
-  });
-}
+  // 2. ENVIAR A FIREBASE (Para que el rival lo reciba)
+  const miChatRef = ref(db, `rooms/${session.roomCode}/chat/${session.mySeat}`);
+  set(miChatRef, { msg: text, t: Date.now() });
 
-  // 4. Cerrar menú y bloquear 10s
+  // 3. Cerrar menú y bloquear 10s (Tu lógica original)
   const menu = document.getElementById('myRadialMenu');
   if(menu) menu.classList.remove('active');
   
@@ -107,6 +96,25 @@ if (typeof socket !== 'undefined') {
     window.canChat = true;
     if(myAv) myAv.classList.remove('av-frozen');
   }, 10000);
+};
+
+// No olvides pegar también la de activarChatRival justo debajo:
+window.activarChatRival = function() {
+  if (!session.roomCode || session.mySeat === null) return;
+  
+  const rivalSeat = session.mySeat === 0 ? 1 : 0;
+  const rivalChatRef = ref(db, `rooms/${session.roomCode}/chat/${rivalSeat}`);
+  
+  let inicial = true;
+  onValue(rivalChatRef, (snap) => {
+    const data = snap.val();
+    if (data && data.msg) {
+      if (inicial) { inicial = false; return; } 
+      if (window.showBubble) {
+        window.showBubble('rivalBubble', data.msg);
+      }
+    }
+  });
 };
 
 // 3. RECIBIR DEL RIVAL
@@ -1210,11 +1218,29 @@ async function joinRoom(){
   else if(p0?.name===name)session.mySeat=0;else session.mySeat=1;
   saveLS(name,code,session.mySeat);setLobbyMsg(`Unit com J${session.mySeat}.`,'good');startSession(code);
 }
+async function leaveRoom() {
+  // 1. Paramos cronómetros
+  if (typeof stopBetween === 'function') stopBetween(); 
+  if (typeof stopTurnTimer === 'function') stopTurnTimer();
 
-async function leaveRoom(){
-  stopBetween();stopTurnTimer();
-  if(session.roomRef&&session.mySeat!=null){try{await remove(ref(db,`rooms/${session.roomCode}/state/players/${K(session.mySeat)}`));}catch(e){}}
-  localStorage.removeItem(LS.room);localStorage.removeItem(LS.seat);location.reload();
+  // 2. BORRAR LA SALA COMPLETA EN FIREBASE
+  if (session.roomRef) {
+    try {
+      // Usamos la referencia que ya tienes para borrarlo todo
+      await remove(session.roomRef); 
+      console.log("Sala eliminada de Firebase");
+    } catch (e) {
+      console.error("Error al borrar sala:", e);
+    }
+  }
+
+  // 3. Limpiar memoria del navegador (usando tus llaves LS)
+  localStorage.removeItem(LS.room);
+  localStorage.removeItem(LS.seat);
+  localStorage.clear(); // Esto borra también tu nombre de usuario
+
+  // 4. Salir al inicio
+  location.href = window.location.pathname; 
 }
 let _lastRoomListKey = '';
 let unsubRooms = null;
@@ -1294,7 +1320,7 @@ function showQuickJoin(code, host) {
           // Ocultamos el modal
           modal.classList.add('hidden');
           
-          // ¡PULSÁMOS EL BOTÓN DE UNIRSE!
+          // ¡PULSAMOS EL BOTÓN DE UNIRSE!
           realJoinBtn.click();
       } else {
           console.error("No s'han trobat els IDs nameInput, roomInput o joinBtn");
