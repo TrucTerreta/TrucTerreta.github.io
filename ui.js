@@ -82,7 +82,7 @@ window.sendPhrase = function(text) {
   window.showBubble('myBubble', text);
 
   // 2. ENVIAR A FIREBASE (Para que el rival lo reciba)
-  const miChatRef = ref(db, `rooms/${session.roomCode}/chat/${session.mySeat}`);
+  const miChatRef = ref(db, `rooms/${session.roomCode}/phrases/${session.mySeat}`);
   set(miChatRef, { msg: text, t: Date.now() });
 
   // 3. Cerrar menú y bloquear 10s (Tu lógica original)
@@ -109,7 +109,7 @@ window.activarChatRival = function() {
   if (!session.roomCode || session.mySeat === null) return;
   
   const rivalSeat = session.mySeat === 0 ? 1 : 0;
-  const rivalChatRef = ref(db, `rooms/${session.roomCode}/chat/${rivalSeat}`);
+  const rivalChatRef = ref(db, `rooms/${session.roomCode}/phrases/${rivalSeat}`)
   
   let inicial = true;
   onValue(rivalChatRef, (snap) => {
@@ -796,6 +796,7 @@ async function animateHUDPoints(id, targetValue, hudIdx) {
 
   // Liberamos el seguro al terminar
   el.dataset.animating = "false";
+  playSound('point');
 }
 
 function renderHUD(state){
@@ -1421,81 +1422,7 @@ export function initApp(){
   })();
   loadRoomList();
 }
-async function animatePoints(elementId, startValue, endValue) {
-  const el = $(elementId);
-  if (!el || startValue === endValue) return;
 
-  // Si por alguna razón el valor final es menor (reinicio), actualizamos sin animar
-  if (endValue < startValue) {
-    el.textContent = endValue;
-    return;
-  }
-
-  for (let v = startValue + 1; v <= endValue; v++) {
-    // Esperamos un poco entre punto y punto (500ms)
-    await new Promise(resolve => setTimeout(resolve, 600));
-
-    el.textContent = v;
-    
-    // Reiniciamos la animación CSS
-    el.classList.remove('score-animate');
-    void el.offsetWidth; // Truco para forzar al navegador a reiniciar la animación
-    el.classList.add('score-animate');
-    
-    // Opcional: Sonido de "click" o "punto" si tienes uno
-    // playSound('point'); 
-  }
-}
-
-export function initRoomListListener() {
-    const listEl = document.getElementById('roomList');
-    if (!listEl) return;
-
-    // Si ya había un escuchador, lo cerramos para no duplicar
-    if (unsubRooms) unsubRooms();
-
-    // Escuchamos la carpeta 'rooms' de Firebase
-    unsubRooms = onValue(ref(db, 'rooms'), (snapshot) => {
-        const rooms = snapshot.val();
-        listEl.innerHTML = ''; // Limpiamos la lista actual
-
-        if (!rooms) {
-            listEl.innerHTML = '<div class="no-rooms">No hi ha sales obertes</div>';
-            return;
-        }
-
-        // Recorremos las salas encontradas
-        Object.keys(rooms).forEach(code => {
-            const room = rooms[code];
-            
-            // FILTRO: Solo mostrar si no ha empezado y solo hay 1 persona
-            const occupancy = room.presence ? Object.keys(room.presence).length : 0;
-            
-            if (!room.state && occupancy === 1) {
-                const item = document.createElement('div');
-                item.className = 'room-item';
-                item.innerHTML = `
-                    <span>Sala: <b>${code}</b></span>
-                    <button class="join-btn-list" data-code="${code}">Entrar</button>
-                `;
-                
-                // Evento para unirnos al hacer clic
-                item.querySelector('.join-btn-list').onclick = () => {
-                    const input = document.getElementById('roomCodeInput');
-                    if (input) input.value = code;
-                    // Disparamos el clic del botón de entrar que ya tienes
-                    document.getElementById('btnJoin')?.click();
-                };
-                
-                listEl.appendChild(item);
-            }
-        });
-
-        if (listEl.innerHTML === '') {
-            listEl.innerHTML = '<div class="no-rooms">Esperant sales noves...</div>';
-        }
-    });
-}
 // ── TOGGLE MENÚ RADIAL ──────────────────────────────
 window.toggleRadialMenu = function() {
   if (!window.canChat) return; // Si está bloqueado, no abrir

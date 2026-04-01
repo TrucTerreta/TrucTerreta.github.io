@@ -15,7 +15,7 @@
   --green-glow: rgba(46,160,67,.22);
   --red:        #c93535;
   --red-glow:   rgba(201,53,53,.22);
-  --text:       #e8f0e4;
+  --text:       #f0e4e4;
   --muted:      #e8f9e9;
   --dim:        #3a4f3c;
   --card-light: #fffef8;
@@ -96,7 +96,7 @@ h1 .hi { color: var(--gold); }
 .hud-right { justify-content: flex-end; }
 .hud-center { display: flex; align-items: center; gap: 10px; }
 .hud-pill { font-size: 11px; font-weight: 700; letter-spacing: .4px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.hud-score-num { font-family: 'Crimson Pro', serif; font-size: 40px; font-weight: 600; color: var(--text); line-height: 1; min-width: 30px; text-align: center; }
+.hud-score-num { font-family: 'Crimson Pro', serif; font-size: 40px; font-weight: 600; color: var(--gold); line-height: 1; min-width: 30px; text-align: center; }
 .hud-score-sep { font-size: 28px; color: var(--dim); }
 .hud-leave { font-family: 'Outfit', sans-serif; font-size: 12px; font-weight: 600; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; color: var(--muted); cursor: pointer; transition: border-color .15s, color .15s; white-space: nowrap; }
 .hud-leave:hover { border-color: rgba(201,53,53,.5); color: #ff8080; }

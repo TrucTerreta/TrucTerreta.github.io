@@ -208,7 +208,7 @@ export async function respondEnvit(choice){
       // Si h.resume.oldOffer existe, significa que esto es una contra-oferta (ej: Envit -> Falta).
       // En ese caso, al decir "No vull" se pierden 2 puntos (la apuesta anterior).
       // Si no había oferta previa (Envit directo o Falta directa), se pierde solo 1 punto.
-      const puntosPerdidos = h.resume?.oldOffer ? 2 : 1;
+      const puntosPerdidos = (offer.level === 4 || offer.level === 'falta') ? 2 : 1;
       
       // IMPORTANTE: Pasamos 'puntosPerdidos' como tercer argumento
       addSA(h, caller, puntosPerdidos); 
@@ -247,8 +247,7 @@ export async function respondTruc(choice){
       resumeOffer(state);return true;
     }
     if(choice==='no_vull'){
-      h.truc={state:'rejected',caller,responder:resp,acceptedLevel:0,acceptedBy:null};
-      h.mazo=true;
+      h.truc={state:'rejected',caller,responder:resp,acceptedLevel: offer.level - 1,acceptedBy:null};
       h.envitAvailable=false;
       
       const nom = pName(state, session.mySeat);
