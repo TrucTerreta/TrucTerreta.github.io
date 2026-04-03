@@ -34,7 +34,7 @@ html, body { height: 100%; overflow: hidden; font-family: 'Outfit', sans-serif; 
 /* Capa de blur + oscurecimiento SIN pointer-events para no bloquear clicks */
 #screenLobby::before {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(0,0,0,.5);
   backdrop-filter: blur(5px);
@@ -1147,16 +1147,15 @@ h1 .hi { color: var(--gold); }
 /* Modal compacto y centrado solo en el área de salas */
 /* El modal ahora se alinea arriba (flex-start) para que no lo tape el teclado */
 .qj-modal {
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(2px);
-  display: flex; 
-  align-items: flex-start; /* <--- Lo subimos al principio */
-  justify-content: center;
-  padding-top: 15px; /* <--- Espacio desde el borde superior */
-  z-index: 100;
-  border-radius: 10px;
+  position: fixed;   /* ← fixed en lugar de absolute */
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;    /* ← centra verticalmente */
+  justify-content: center; /* ← centra horizontalmente */
+  z-index: 500;
+  border-radius: 0;  /* quita el border-radius que tenía del contenedor pequeño */
 }
 
 /* El recuadro ahora es verde y más compacto */
