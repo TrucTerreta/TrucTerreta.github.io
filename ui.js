@@ -673,7 +673,10 @@ function renderActions(state) {
       sndBtn();
       showTableMsg(l);
       try { await fn(); } finally {
-        setTimeout(() => { _actionInProgress = false; }, 1500); // ← libera tras 1.5s
+        setTimeout(() => {
+          _actionInProgress = false;
+          get(session.roomRef).then(snap=>{ if(snap?.val()) renderAll(snap.val()); }).catch(()=>{});
+        }, 1500);
       }
     });
     ra.appendChild(b);
@@ -1379,7 +1382,10 @@ export function initApp(){
     _actionInProgress = true;
     sndBtn(); showTableMsg('Envide!', true);
     try { await startOffer('envit'); } finally {
-      setTimeout(() => { _actionInProgress = false; }, 1500);
+      setTimeout(() => {
+        _actionInProgress = false;
+        get(session.roomRef).then(snap=>{ if(snap?.val()) renderAll(snap.val()); }).catch(()=>{});
+      }, 1500);
     }
   };
   $('faltaBtn').onclick = async () => {
@@ -1387,7 +1393,10 @@ export function initApp(){
     _actionInProgress = true;
     sndBtn(); showTableMsg('Falta!', true);
     try { await startOffer('falta'); } finally {
-      setTimeout(() => { _actionInProgress = false; }, 1500);
+      setTimeout(() => {
+        _actionInProgress = false;
+        get(session.roomRef).then(snap=>{ if(snap?.val()) renderAll(snap.val()); }).catch(()=>{});
+      }, 1500);
     }
   };
   $('trucBtn').onclick = async () => {
@@ -1395,7 +1404,10 @@ export function initApp(){
     _actionInProgress = true;
     sndBtn(); showTableMsg('Truque!', true);
     try { await startOffer('truc'); } finally {
-      setTimeout(() => { _actionInProgress = false; }, 1500);
+      setTimeout(() => {
+        _actionInProgress = false;
+        get(session.roomRef).then(snap=>{ if(snap?.val()) renderAll(snap.val()); }).catch(()=>{});
+      }, 1500);
     }
   };
   $('mazoBtn').onclick = async () => {
@@ -1403,7 +1415,10 @@ export function initApp(){
     _actionInProgress = true;
     sndBtn(); showTableMsg("Me'n vaig!", true);
     try { await goMazo(); } finally {
-      setTimeout(() => { _actionInProgress = false; }, 1500);
+      setTimeout(() => {
+        _actionInProgress = false;
+        get(session.roomRef).then(snap=>{ if(snap?.val()) renderAll(snap.val()); }).catch(()=>{});
+      }, 1500);
     }
   };
 
