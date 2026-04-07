@@ -1,3 +1,3 @@
-// --- Truc Valenciano . game.js (entrada) --------------------------------------
-import { initApp } from './ui.js';
+// --- Truc Valencià . game.js (entrada) --------------------------------------
+import { initApp } from "./ui.js";
 initApp();

@@ -10,7 +10,7 @@
 <body>
 
 <!-- ═══════════════════════════════════════
-     PANTALLA 1 · LOBBY
+PANTALLA 1 · LOBBY
 ═══════════════════════════════════════ -->
 <div id="screenLobby" class="screen">
   <div class="lobby-wrap">
@@ -57,7 +57,7 @@
 
 
 <!-- ═══════════════════════════════════════
-     PANTALLA 2 · MESA DE JUEGO
+PANTALLA 2 · MESA DE JUEGO
 ═══════════════════════════════════════ -->
 <div id="screenGame" class="screen hidden">
 
@@ -129,12 +129,44 @@
     <div class="si-block"><div class="si-lbl">Torn</div><div id="siMano">—</div></div>
     <div class="si-block"><div class="si-lbl">Ronda</div><div id="siHand">0</div></div>
   </div>
-
-  <!-- Registro izquierda -->
   <div id="logPanel">
     <div id="logToggle" class="log-toggle">▸ Registre</div>
     <div id="logBody" class="log-body hidden"><div id="logArea"></div></div>
   </div>
+  <!-- ── CONFIGURACIÓN ── -->
+<div id="configBtn" class="config-btn" title="Configuració">⚙️</div>
+
+<div id="configPanel" class="config-panel hidden">
+  <div class="cfg-header">
+    <span class="cfg-title">Configuració</span>
+    <button class="cfg-close" id="configClose">✕</button>
+  </div>
+
+  <div class="cfg-section">
+    <div class="cfg-label">Botons</div>
+    <div class="cfg-options">
+      <button class="cfg-opt" data-cfg="buttonSize" data-val="normal">Normal</button>
+      <button class="cfg-opt" data-cfg="buttonSize" data-val="large">Grans</button>
+    </div>
+  </div>
+
+  <div class="cfg-section">
+    <div class="cfg-label">Fons de la taula</div>
+    <div class="cfg-options">
+      <button class="cfg-opt" data-cfg="tableBackground" data-val="green">Verd</button>
+      <button class="cfg-opt" data-cfg="tableBackground" data-val="bg2">Blau</button>
+      <button class="cfg-opt" data-cfg="tableBackground" data-val="bg3">Bar</button>
+    </div>
+  </div>
+
+  <div class="cfg-section">
+    <div class="cfg-label">🔊 So</div>
+    <div class="cfg-options">
+      <button class="cfg-opt" data-cfg="sound" data-val="true">Sí</button>
+      <button class="cfg-opt" data-cfg="sound" data-val="false">No</button>
+    </div>
+  </div>
+</div>
 
   <!-- PANEL ACCIONES inferior -->
   <div id="actionPanel">
