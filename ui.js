@@ -1154,7 +1154,7 @@ async function animateHUDPoints(id, targetValue, hudIdx) {
 
   // Liberamos el seguro al terminar
   el.dataset.animating = "false";
-  playSound("point");
+  sndPoint();
 }
 
 function renderHUD(state) {
@@ -1655,9 +1655,23 @@ async function createRoom() {
     Math.random().toString(36).slice(2, 6).toUpperCase();
   const r = ref(db, `rooms/${code}`);
   const ex = await get(r);
+
   if (ex.exists()) {
-    setLobbyMsg("Sala ja existeix.", "err");
-    return;
+    const data = ex.val();
+    const lastActivity = data.lastActivity || 0;
+    const estado = data.state?.status;
+    const inactiva = Date.now() - lastActivity > 10 * 60 * 1000; // 10 minutos
+    const finalizada = estado === "game_over";
+    const sinJugadores =
+      !data.state?.players?.[K(0)] || !data.state?.players?.[K(1)];
+
+    // Si está inactiva, finalizada o sin jugadores, la borramos y continuamos
+    if (inactiva || finalizada || sinJugadores) {
+      await remove(r);
+    } else {
+      setLobbyMsg("Sala ja existeix.", "err");
+      return;
+    }
   }
   const init = defaultState();
   init.roomCode = code;
@@ -1728,28 +1742,32 @@ async function joinRoom() {
   startSession(code);
 }
 async function leaveRoom() {
-  // 1. Paramos cronómetros
-  if (typeof stopBetween === "function") stopBetween();
-  if (typeof stopTurnTimer === "function") stopTurnTimer();
-
-  // 2. BORRAR LA SALA COMPLETA EN FIREBASE
-  if (session.roomRef) {
+  stopBetween();
+  stopTurnTimer();
+  if (session.roomRef && session.mySeat !== null) {
     try {
-      // Usamos la referencia que ya tienes para borrarlo todo
-      await remove(session.roomRef);
-      console.log("Sala eliminada de Firebase");
-    } catch (e) {
-      console.error("Error al borrar sala:", e);
-    }
-  }
+      const snap = await get(session.roomRef);
+      const data = snap.val();
+      const estado = data?.state?.status;
+      const otroJugador = data?.state?.players?.[K(other(session.mySeat))];
 
-  // 3. Limpiar memoria del navegador (usando tus llaves LS)
+      // Borrar sala entera si acabó o si el rival ya no está
+      if (estado === "game_over" || !otroJugador) {
+        await remove(session.roomRef);
+      } else {
+        // Solo te vas tú, el rival sigue — quita tu jugador
+        await remove(
+          ref(
+            db,
+            `rooms/${session.roomCode}/state/players/${K(session.mySeat)}`,
+          ),
+        );
+      }
+    } catch (e) {}
+  }
   localStorage.removeItem(LS.room);
   localStorage.removeItem(LS.seat);
-  localStorage.clear(); // Esto borra también tu nombre de usuario
-
-  // 4. Salir al inicio
-  location.href = window.location.pathname;
+  location.reload();
 }
 let _lastRoomListKey = "";
 let unsubRooms = null;
@@ -1846,9 +1864,27 @@ function showQuickJoin(code, host) {
 
 // Muy importante para que el botón de la lista lo vea:
 window.showQuickJoin = showQuickJoin;
+async function limpiarSalasAntiguas() {
+  try {
+    const snap = await get(ref(db, "rooms"));
+    if (!snap.exists()) return;
+    const ahora = Date.now();
+    const borrados = [];
+    snap.forEach((child) => {
+      const data = child.val();
+      const inactiva = ahora - (data.lastActivity || 0) > 30 * 60 * 1000; // 30 min
+      const finalizada = data.state?.status === "game_over";
+      if (inactiva || finalizada) {
+        borrados.push(remove(ref(db, `rooms/${child.key}`)));
+      }
+    });
+    await Promise.all(borrados);
+  } catch (e) {}
+}
 // --- Boot: initApp ------------------------------------------------------------
 export function initApp() {
   configureActions({ renderAll });
+  limpiarSalasAntiguas(); // sin await, que corra en segundo plano
   $("createBtn").addEventListener("click", createRoom);
   $("joinBtn").addEventListener("click", joinRoom);
   $("leaveBtn").addEventListener("click", leaveRoom);

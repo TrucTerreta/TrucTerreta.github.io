@@ -26,7 +26,7 @@
   --dim: #3a4f3c;
   --card-light: #fffef8;
   --card-warm: #f5f0e4;
-  --r-card: 9px;
+  --r-card: 3px;
   --sh-card: 0 6px 24px rgba(0, 0, 0, 0.65), 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
@@ -1524,7 +1524,8 @@ h1 .hi {
   }
 }
 .cd-subtitle {
-  font-size: 18px;
+  font-size: 14px;
+  font-weight: bold;
   color: rgb(255, 255, 255);
   letter-spacing: 1px;
 }
@@ -1941,7 +1942,7 @@ h1 .hi {
   height: 100% !important;
   margin: 0 !important;
 
-  border-radius: 8px;
+  border-radius: 3px;
 }
 
 /* Separador invisible o línea sutil entre cartas */
@@ -2178,7 +2179,7 @@ h1 .hi {
   font-size: clamp(12px, 2.5vw, 15px);
   padding: 10px 12px;
   white-space: nowrap;
-  border-radius: 8px; /* Por si quieres que se vean más modernos */
+  border-radius: 16px; /* Por si quieres que se vean más modernos */
 
   /* Si el texto no cabe, que ponga puntos suspensivos */
   overflow: hidden;
@@ -2439,35 +2440,42 @@ h1 .hi {
 #table.bg-bg2 {
   background: radial-gradient(
     ellipse at 50% 40%,
-    #1a2a4a 0%,
-    #0d1525 100%
+    #2d519a 0%,
+    #1f3054 100%
   ) !important;
 }
 
 /* ── MESA: Fondo 3 (Imatge de BAR amb Blur - El que fallava) ── */
+/* ── MESA: Fondo 3 (Bar con desenfoque total) ── */
 #table.bg-bg3 {
-  position: relative;
-  overflow: hidden;
-  background-color: #000 !important; /* Fons negre mentre carrega */
-  background-image: none !important; /* ELIMINA EL TAPETE VERDE */
+  background: transparent !important;
 }
 
-#table.bg-bg3::before {
+#table.bg-bg3::after {
   content: "";
-  position: absolute;
-  /* El inset -10px i el scale 1.1 són per a evitar vores blanques pel blur */
-  inset: -10px;
-  background:
-    linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
-    url("./Media/Images/Others/fondo-mesa-juego-bar.webp") center/cover
-      no-repeat;
-  filter: blur(12px) saturate(0.85);
-  transform: scale(1.1);
-  z-index: 0;
+  /* FIXED hace que el fondo ocupe TODA la ventana del navegador */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+
+  background-image:
+    linear-gradient(rgba(53, 53, 53, 0.5), rgba(32, 32, 32, 0.5)),
+    url("./Media/Images/Others/fondo-mesa-juego-bar.webp");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+
+  /* --- AJUSTES SOLICITADOS --- */
+  filter: blur(2px); /* Menos borroso (antes era 12px) */
+  transform: scale(1.05); /* Un pelín menos de escala al haber menos blur */
+
+  z-index: -1; /* Lo enviamos al fondo de todo */
   pointer-events: none;
 }
 
-/* Això fa que les cartes i el xat es vegen per sobre de la imatge borrosa */
+/* Aseguramos que el contenido del juego sea visible y cliqueable */
 #table.bg-bg3 > * {
   position: relative;
   z-index: 1;
@@ -2490,4 +2498,72 @@ body.btn-large #actionBtns {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+/* ── MANO DEL JUGADOR: efecto abanico ── */
+.my-card-wrap:nth-child(1) {
+  transform: rotate(-8deg) translateY(6px);
+  transform-origin: bottom center;
+  z-index: 1; /* debajo */
+}
+.my-card-wrap:nth-child(2) {
+  transform: rotate(0deg) translateY(0px);
+  transform-origin: bottom center;
+  z-index: 2; /* en medio */
+}
+.my-card-wrap:nth-child(3) {
+  transform: rotate(8deg) translateY(6px);
+  transform-origin: bottom center;
+  z-index: 3; /* encima */
+}
+
+/* Hover: se levanta y endereza manteniendo el z-index alto */
+.my-card-wrap:nth-child(1):hover {
+  transform: rotate(-4deg) translateY(-16px) scale(1.05);
+  z-index: 10;
+}
+.my-card-wrap:nth-child(2):hover {
+  transform: rotate(0deg) translateY(-16px) scale(1.05);
+  z-index: 10;
+}
+.my-card-wrap:nth-child(3):hover {
+  transform: rotate(4deg) translateY(-16px) scale(1.05);
+  z-index: 10;
+}
+
+/* Transición suave */
+.my-card-wrap {
+  transition:
+    transform 0.2s ease,
+    z-index 0s;
+}
+/* ── REPOSICIONAMIENTO CON 2 CARTAS ── */
+
+/* Cuando solo hay 2 cartas, la primera es también :nth-child(1) 
+   pero necesitamos sobrescribir los ángulos del abanico de 3 */
+.my-card-wrap:nth-child(1):nth-last-child(2) {
+  transform: rotate(-5deg) translateY(4px);
+  z-index: 1;
+}
+.my-card-wrap:nth-child(2):nth-last-child(1):not(:first-child) {
+  transform: rotate(5deg) translateY(4px);
+  z-index: 2; /* encima */
+}
+
+/* Hover con 2 cartas */
+.my-card-wrap:nth-child(1):nth-last-child(2):hover {
+  transform: rotate(-2deg) translateY(-16px) scale(1.05);
+  z-index: 10;
+}
+.my-card-wrap:nth-child(2):nth-last-child(1):not(:first-child):hover {
+  transform: rotate(2deg) translateY(-16px) scale(1.05);
+  z-index: 10;
+}
+
+/* ── CON 1 CARTA: centrada y recta ── */
+.my-card-wrap:only-child {
+  transform: rotate(0deg) translateY(0px);
+}
+.my-card-wrap:only-child:hover {
+  transform: translateY(-16px) scale(1.05);
+  z-index: 10;
 }

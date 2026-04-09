@@ -105,6 +105,13 @@ export async function dealHand() {
     if (!state.players?.[K(0)] || !state.players?.[K(1)]) return false;
     if (state.status === "game_over") return false;
     if (state.hand?.status === "in_progress") return false;
+
+    // Primera mano: decidir aleatoriamente quién empieza
+    if (real(state.handNumber) === 0) {
+      const manoInicial = Math.random() < 0.5 ? 0 : 1;
+      state.mano = manoInicial;
+    }
+
     state.hand = Logica.makeHand(state.mano);
     state.status = "playing";
     pushLog(state, `Ma #${real(state.handNumber) + 1}. Torn: J${state.mano}.`);
