@@ -2093,6 +2093,7 @@ export function initApp() {
       try {
         const snap = await get(ref(db, `rooms/${_code}`));
         if (snap.exists() && snap.val()?.state) {
+          if (session.roomCode) return; // ← ya se unió manualmente, no sobreescribir
           session.roomCode = _code;
           $("roomInput").value = _code;
           const _ss = localStorage.getItem(LS.seat);
