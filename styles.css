@@ -1810,6 +1810,11 @@ body {
   font-size: clamp(9px, 2vmin, 11px);
 }
 
+/* Només es mostra l’avatar de partida a la pre-partida (no la foto de perfil duplicada) */
+#waitingOverlay .slot-photo-frame--lobby-hidden {
+  display: none !important;
+}
+
 .slot-photo-frame {
   width: 76px;
   height: 76px;
@@ -1859,7 +1864,7 @@ body {
 #waitingOverlay .slot-game-av {
   width: clamp(52px, 13vmin, 84px);
   height: clamp(52px, 13vmin, 84px);
-  border-radius: clamp(8px, 1.8vmin, 12px);
+  border-radius: 50%;
 }
 
 .slot-game-av img {
@@ -2319,6 +2324,7 @@ body {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
+  border-radius: 50% !important;
   display: block !important;
 }
 
@@ -2640,40 +2646,95 @@ body {
   display: block;
 }
 
-/* Botons d'acció (base) */
+/* Botons d'acció (base): volum 3D + semàfor / escales progressives */
 .abtn {
   font-family: "Outfit", sans-serif;
   font-size: 17px;
   font-weight: 800;
-  border: 2px solid transparent;
-  border-radius: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
   padding: 13px 22px;
   cursor: pointer;
   min-width: 110px;
   transition:
     opacity 0.15s,
-    transform 0.07s,
-    filter 0.15s;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    transform 0.08s ease-out,
+    filter 0.15s,
+    box-shadow 0.08s ease-out;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.6),
-    0 1px 3px rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 4px 0 rgba(0, 0, 0, 0.22),
+    0 6px 14px rgba(0, 0, 0, 0.35);
 }
 
-.abtn-green {
-  background: #1e7a34;
-  border-color: #4caf65;
-  color: #e8ffe8;
+.abtn:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 2px 0 rgba(0, 0, 0, 0.2),
+    0 3px 10px rgba(0, 0, 0, 0.3);
 }
-.abtn-gold {
-  background: #8a5e00;
-  border-color: #e8ab2a;
-  color: #fff3cc;
+
+/* Semàfor: acceptar / rebutjar */
+.abtn.btn-accept {
+  background: linear-gradient(180deg, #4caf50 0%, #2e7d32 100%);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
 }
-.abtn-red {
-  background: #7a1f1f;
-  border-color: #e05555;
-  color: #ffe8e8;
+
+.abtn.btn-reject {
+  background: linear-gradient(180deg, #f44336 0%, #c62828 100%);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+/* Escala TRUC: 1 = més fosc (aposta baixa) → 3 = més clar (aposta alta) */
+.abtn.btn-truc-1 {
+  background: linear-gradient(180deg, #1565c0 0%, #0a2540 100%);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.abtn.btn-truc-2 {
+  background: linear-gradient(180deg, #42a5f5 0%, #1976d2 100%);
+  border-color: rgba(255, 255, 255, 0.32);
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.abtn.btn-truc-3 {
+  background: linear-gradient(180deg, #90caf9 0%, #42a5f5 100%);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+  text-shadow:
+    1px 1px 2px rgba(0, 0, 0, 0.65),
+    0 0 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Escala ENVIT (oliva/bosc): 1 = més fosc → 3 = més clar */
+.abtn.btn-envit-1 {
+  background: linear-gradient(180deg, #558b2f 0%, #263d14 100%);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.abtn.btn-envit-2 {
+  background: linear-gradient(180deg, #8bc34a 0%, #558b2f 100%);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.abtn.btn-envit-3 {
+  background: linear-gradient(180deg, #c5e1a5 0%, #8bc34a 100%);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+  text-shadow:
+    1px 1px 2px rgba(0, 0, 0, 0.65),
+    0 0 3px rgba(0, 0, 0, 0.35);
 }
 
 /* Panell d'accions en mòbil */
@@ -2744,7 +2805,7 @@ body {
   font-size: clamp(12px, 2.5vw, 15px);
   padding: 10px 12px;
   white-space: nowrap;
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -2978,15 +3039,13 @@ body.btn-large #actionBtns {
   height: 56px !important;
 }
 
-/* Menú de frases (translateX durant animació) */
+/* Menú de frases: posició la fixa ui.js (evita transform vs animació) */
 @keyframes phraseMenuIn {
-  0% {
+  from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-10px) scale(0.95);
   }
-  100% {
+  to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 /* Mà del jugador: abanico 3 cartes */
@@ -3046,22 +3105,19 @@ body.btn-large #actionBtns {
   transform: translateY(-16px) scale(1.05);
   z-index: 10;
 }
-/* Menú de frases ràpides (fixed: evita retall per overflow:hidden de #table) */
+/* Menú de frases ràpides: fixed al body; left/bottom/width per JS (alineat avatar + clamp) */
 .phrase-menu {
   position: fixed;
-  left: 50%;
-  right: auto;
-  bottom: max(108px, calc(84px + env(safe-area-inset-bottom, 0px)));
-  transform: translateX(-50%);
+  inset: auto;
   z-index: 1000;
+  margin: 0;
   background: rgba(8, 18, 12, 0.97);
   border: 1px solid var(--border-hi);
   border-radius: 12px;
-  padding: 6px 4px;
+  padding: 6px 6px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: min(380px, calc(100vw - 32px));
   max-width: none;
   max-height: min(52vh, 380px);
   overflow-x: hidden;
@@ -3078,13 +3134,16 @@ body.btn-large #actionBtns {
 .phrase-item {
   font-size: 12px;
   color: var(--text);
-  padding: 6px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.12s;
   white-space: normal;
   line-height: 1.35;
   user-select: none;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
 }
 .phrase-item:hover,
 .phrase-item:active {
@@ -3092,29 +3151,29 @@ body.btn-large #actionBtns {
   color: var(--gold);
 }
 
-/* Bafarada de xat */
+/* Bafarada de xat (fixed; posició ui.js, com el menú de frases) */
 .speech-bubble {
-  position: absolute;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
+  inset: auto;
+  margin: 0;
   background: white;
   color: #222;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 700;
-  z-index: 500;
+  z-index: 900;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   pointer-events: none;
-  width: min(380px, calc(100vw - 16px));
   max-width: none;
   box-sizing: border-box;
   white-space: normal;
   line-height: 1.4;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  text-align: left;
   animation: popIn 0.25s ease both;
+  transform-origin: center bottom;
 }
 .speech-bubble::after {
   content: "";
@@ -3126,12 +3185,9 @@ body.btn-large #actionBtns {
   border-style: solid;
   border-color: white transparent transparent;
 }
-/* Bafarada rival sota l'avatar */
+/* Bafarada rival sota l'avatar (posició top per JS) */
 .speech-bubble.rival-bubble {
-  top: calc(100% + 10px);
-  bottom: auto;
-  left: 50%;
-  transform: translateX(-50%);
+  transform-origin: center top;
   animation: popInRival 0.25s ease both;
 }
 .speech-bubble.rival-bubble::after {
@@ -3148,22 +3204,22 @@ body.btn-large #actionBtns {
 
 @keyframes popIn {
   from {
-    transform: translateX(-50%) scale(0.8) translateY(8px);
     opacity: 0;
+    transform: scale(0.92);
   }
   to {
-    transform: translateX(-50%) scale(1) translateY(0);
     opacity: 1;
+    transform: scale(1);
   }
 }
 @keyframes popInRival {
   from {
-    transform: translateX(-50%) scale(0.88) translateY(-8px);
     opacity: 0;
+    transform: scale(0.92);
   }
   to {
-    transform: translateX(-50%) scale(1) translateY(0);
     opacity: 1;
+    transform: scale(1);
   }
 }
 

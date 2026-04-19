@@ -118,7 +118,8 @@ function roomListEstadoLabel(st) {
   const s0 = real(st.scores?.[K(0)] ?? OFFSET);
   const s1 = real(st.scores?.[K(1)] ?? OFFSET);
   const meta = Logica.getPuntosParaGanar(st);
-  if (st.status === "game_over" || s0 >= meta || s1 >= meta) return "Finalitzada";
+  if (st.status === "game_over" || s0 >= meta || s1 >= meta)
+    return "Finalitzada";
   if (st.status === "waiting" && real(st.handNumber ?? OFFSET) === 0)
     return "En preparació";
   return "En partida";
@@ -230,6 +231,8 @@ let prevTurnKey = "",
 let chatOpen = false,
   lastChatN = 0;
 let _lastState = null; // ultimo estado conocido para uso en helpers de render
+/** Esborrat automàtic de la sala (tancar pestanya/app) mentre està en preparació. */
+let _preGameRoomOnDisconnect = null;
 // Render tracking - avoid unnecessary DOM rebuilds that cause flash
 let _prevHandsKey = ""; // tracks hand cards state
 let _prevTrickKey = ""; // tracks trick cards state
@@ -1046,28 +1049,28 @@ function renderActions(state) {
     om.classList.remove("hidden");
     ra.classList.remove("hidden");
     if (h.pendingOffer.kind === "envit") {
-      add("Vull", "abtn-green", () => respondEnvit("vull"));
-      add("No vull", "abtn-red", () => respondEnvit("no_vull"));
+      add("Vull", "btn-accept", () => respondEnvit("vull"));
+      add("No vull", "btn-reject", () => respondEnvit("no_vull"));
 
       const lvl = h.pendingOffer.level;
       if (lvl === 2) {
-        add("Torne", "abtn-gold", () => respondEnvit("torne"));
-        add("Falta", "abtn-gold", () => respondEnvit("falta"));
+        add("Torne", "btn-envit-2", () => respondEnvit("torne"));
+        add("Falta", "btn-envit-3", () => respondEnvit("falta"));
       } else if (lvl === 4) {
-        add("Falta", "abtn-gold", () => respondEnvit("falta"));
+        add("Falta", "btn-envit-3", () => respondEnvit("falta"));
       }
       // lvl === 'falta' → solo Vull/No vull, nada más
     } else {
       if (envitOk) {
-        add("Envidar", "abtn-green", () => startOffer("envit"));
-        add("Falta", "abtn-gold", () => startOffer("falta"));
+        add("Envidar", "btn-envit-1", () => startOffer("envit"));
+        add("Falta", "btn-envit-3", () => startOffer("falta"));
       }
-      add("Vull", "abtn-green", () => respondTruc("vull"));
-      add("No vull", "abtn-red", () => respondTruc("no_vull"));
+      add("Vull", "btn-accept", () => respondTruc("vull"));
+      add("No vull", "btn-reject", () => respondTruc("no_vull"));
       if (h.pendingOffer.level === 2)
-        add("Retruque", "abtn-gold", () => respondTruc("retruque"));
+        add("Retruque", "btn-truc-2", () => respondTruc("retruque"));
       if (h.pendingOffer.level === 3)
-        add("Val 4", "abtn-gold", () => respondTruc("val4"));
+        add("Val 4", "btn-truc-3", () => respondTruc("val4"));
     }
   } else if (myT && norm) {
     // Jugada consecutiva obligatoria: gané la baza anterior y debo liderar la siguiente
@@ -1102,6 +1105,11 @@ function renderActions(state) {
                 ? "Retrucar"
                 : "Val 4"
               : "Trucar";
+            tb.classList.remove("btn-truc-1", "btn-truc-2", "btn-truc-3");
+            if (!canEscalate) tb.classList.add("btn-truc-1");
+            else if (Number(h.truc.acceptedLevel || 0) === 2)
+              tb.classList.add("btn-truc-2");
+            else tb.classList.add("btn-truc-3");
             tb.classList.remove("hidden");
           }
         }
@@ -1314,7 +1322,10 @@ function checkPresence(state) {
   get(ref(db, `rooms/${session.roomCode}/presence/${K(other(session.mySeat))}`))
     .then((snap) => {
       if (!session.roomCode || session.mySeat === null) return;
-      if (!isActiveMatchState(_lastState) || _lastState.status === "game_over") {
+      if (
+        !isActiveMatchState(_lastState) ||
+        _lastState.status === "game_over"
+      ) {
         clearAbsenceTimers();
         $("absenceBar")?.classList.add("hidden");
         return;
@@ -1346,6 +1357,32 @@ function checkPresence(state) {
     .catch(() => {});
 }
 
+function cancelPreGameRoomOnDisconnect() {
+  if (_preGameRoomOnDisconnect) {
+    _preGameRoomOnDisconnect.cancel().catch(() => {});
+    _preGameRoomOnDisconnect = null;
+  }
+}
+
+/** Mentre `waiting` + mà 0 (pre-partida), perdre connexió esborra la sala (ambdós tanquen o només l'amfitrió sol). */
+function updatePreGameRoomOnDisconnectArm(state) {
+  const preGame =
+    state?.status === "waiting" && real(state?.handNumber ?? OFFSET) === 0;
+  if (
+    !preGame ||
+    !session.roomRef ||
+    session.mySeat === null ||
+    (session.mySeat !== 0 && session.mySeat !== 1)
+  ) {
+    cancelPreGameRoomOnDisconnect();
+    return;
+  }
+  if (_preGameRoomOnDisconnect) return;
+  const h = onDisconnect(session.roomRef);
+  _preGameRoomOnDisconnect = h;
+  h.remove().catch(() => {});
+}
+
 // --- MAIN RENDER --------------------------------------------------------------
 function renderAll(room) {
   const state = room?.state || defaultState();
@@ -1368,6 +1405,7 @@ function renderAll(room) {
   resetInactivity();
   detectSounds(state);
   _lastState = state;
+  updatePreGameRoomOnDisconnectArm(state);
   if (state.status === "playing" && state.hand) {
     _betweenCountdownLatch = false;
     $("tableCdEl")?.classList.add("hidden");
@@ -1403,11 +1441,18 @@ function renderAll(room) {
   renderHUD(state);
   $("myName").textContent = pName(state, session.mySeat);
   $("rivalName").textContent = pName(state, other(session.mySeat));
-  // Sync avatar selection UI (índice = data-av, coherente con AVATAR_IMAGES)
+  // Sync avatar selection UI (data-av: google | guest | 0..7)
   document.querySelectorAll(".av-opt").forEach((el) => {
-    const i = Number(el.dataset.av);
-    if (Number.isFinite(i))
-      el.classList.toggle("av-selected", i === myAvatar);
+    const d = el.dataset.av;
+    if (d === "google")
+      el.classList.toggle("av-selected", myAvatarChoice === "g");
+    else if (d === "guest")
+      el.classList.toggle("av-selected", myAvatarChoice === "guest");
+    else {
+      const i = Number(d);
+      if (Number.isFinite(i))
+        el.classList.toggle("av-selected", myAvatarChoice === i);
+    }
   });
   renderRivalCards(state.hand?.hands?.[K(other(session.mySeat))]);
   updateRivalTimer(state);
@@ -1696,7 +1741,7 @@ async function sendChat() {
 // --- Room ---------------------------------------------------------------------
 
 // --- Avatars ------------------------------------------------------------------
-// Mismo orden que .av-opt en index.html (data-av 0..7)
+// Ordre: .av-opt-google + .av-opt-guest + data-av 0..7 (AVATAR_IMAGES)
 const AVATAR_IMAGES = [
   "Media/Images/Avatars/Avatar4.png",
   "Media/Images/Avatars/Avatar3.png",
@@ -1707,26 +1752,237 @@ const AVATAR_IMAGES = [
   "Media/Images/Avatars/Avatar7.png",
   "Media/Images/Avatars/Avatar5.png",
 ];
-let myAvatar = Number(localStorage.getItem("truc_avatar") || 0);
 
-function pickAvatar(idx) {
-  // Don't allow picking rival's avatar
-  if (idx === _rivalAvatarIdx && _rivalAvatarIdx >= 0) return;
-  myAvatar = idx;
-  localStorage.setItem("truc_avatar", String(idx));
+/** @typedef {"g"|"guest"|number} AvatarChoice */
+
+/** @type {AvatarChoice} */
+let myAvatarChoice = "guest";
+
+function clampAvatarIdx(n) {
+  const i = Number(n);
+  if (!Number.isFinite(i)) return 0;
+  return Math.min(AVATAR_IMAGES.length - 1, Math.max(0, Math.floor(i)));
+}
+
+function hasGooglePhoto() {
+  const u = auth.currentUser;
+  return !!(u && !u.isAnonymous && u.photoURL);
+}
+
+function escAttr(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
+}
+
+/** URL final per a render (taula / pre-partida) */
+function srcFromChoice(ch) {
+  if (ch === "g") return auth.currentUser?.photoURL || "";
+  if (ch === "guest") return GUEST_LOBBY_AVATAR;
+  if (typeof ch === "number" && ch >= 0 && ch < AVATAR_IMAGES.length)
+    return AVATAR_IMAGES[ch];
+  return "";
+}
+
+/** Escriu a RTDB: URL Google o ruta d'asset (mai índex numèric nou) */
+function firebaseValueForChoice(ch) {
+  if (ch === "g") {
+    const url = auth.currentUser?.photoURL;
+    return url || AVATAR_IMAGES[0];
+  }
+  if (ch === "guest") return GUEST_LOBBY_AVATAR;
+  if (typeof ch === "number" && ch >= 0 && ch < AVATAR_IMAGES.length)
+    return AVATAR_IMAGES[ch];
+  return AVATAR_IMAGES[0];
+}
+
+/** Llegeix valor de sala (nombre antic, URL o path) → URL per a <img src> */
+function srcFromFirebaseAvatar(val) {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "number") {
+    if (val >= 0 && val < AVATAR_IMAGES.length) return AVATAR_IMAGES[val];
+    return "";
+  }
+  if (typeof val === "string") {
+    const t = val.trim();
+    if (!t) return "";
+    if (/^https?:\/\//i.test(t)) return t;
+    if (t === GUEST_LOBBY_AVATAR) return t;
+    return t;
+  }
+  return "";
+}
+
+function avatarImgHtml(src) {
+  if (!src) return "";
+  return `<img src="${escAttr(src)}" alt="" decoding="async">`;
+}
+
+/** Per a conflicte «mateix dibuix que el rival» (URL Google no bloqueja cap índex) */
+function drawingIndexFromFirebase(val) {
+  if (val === null || val === undefined) return -1;
+  if (typeof val === "number")
+    return val >= 0 && val < AVATAR_IMAGES.length ? val : -1;
+  if (typeof val === "string") {
+    const t = val.trim();
+    if (!t) return -1;
+    if (/^https?:\/\//i.test(t)) return -1;
+    if (t === GUEST_LOBBY_AVATAR) return -1;
+    const j = AVATAR_IMAGES.indexOf(t);
+    if (j >= 0) return j;
+    const n = Number(t);
+    if (Number.isFinite(n) && n >= 0 && n < AVATAR_IMAGES.length) return n;
+  }
+  return -1;
+}
+
+function loadAvatarChoiceIntoMemory() {
+  const u = auth.currentUser;
+  if (!u || u.isAnonymous) {
+    const raw = localStorage.getItem("truc_avatar");
+    if (raw === "guest") {
+      myAvatarChoice = "guest";
+      return;
+    }
+    if (raw && /^[0-7]$/.test(raw)) {
+      myAvatarChoice = Number(raw);
+      return;
+    }
+    myAvatarChoice = "guest";
+    return;
+  }
+  const sel = localStorage.getItem("truc_avatar_sel");
+  if (sel === "g" && u.photoURL) {
+    myAvatarChoice = "g";
+    return;
+  }
+  if (sel && /^[0-7]$/.test(sel)) {
+    myAvatarChoice = Number(sel);
+    return;
+  }
+  if (u.photoURL) {
+    myAvatarChoice = "g";
+    return;
+  }
+  myAvatarChoice = clampAvatarIdx(localStorage.getItem("truc_avatar") || 0);
+}
+
+function persistAvatarChoice() {
+  const u = auth.currentUser;
+  if (!u || u.isAnonymous) {
+    if (myAvatarChoice === "guest") {
+      localStorage.setItem("truc_avatar", "guest");
+      localStorage.removeItem("truc_avatar_sel");
+      return;
+    }
+    const idx = typeof myAvatarChoice === "number" ? myAvatarChoice : 0;
+    localStorage.setItem("truc_avatar", String(idx));
+    localStorage.removeItem("truc_avatar_sel");
+    return;
+  }
+  if (myAvatarChoice === "g") {
+    localStorage.setItem("truc_avatar_sel", "g");
+    localStorage.setItem("truc_avatar", "0");
+    return;
+  }
+  localStorage.setItem("truc_avatar_sel", String(myAvatarChoice));
+  localStorage.setItem("truc_avatar", String(myAvatarChoice));
+}
+
+function updateAvatarOptionRowsVisibility() {
+  const googleEl = document.querySelector(".av-opt-google");
+  const guestEl = document.querySelector(".av-opt-guest");
+  const im = googleEl?.querySelector(".av-opt-google-img");
+  const u = auth.currentUser;
+  const googleShow = !!(u && !u.isAnonymous && u.photoURL);
+  const guestShow = !!(u && u.isAnonymous);
+  if (googleEl) googleEl.classList.toggle("hidden", !googleShow);
+  if (guestEl) guestEl.classList.toggle("hidden", !guestShow);
+  if (im && googleShow && u?.photoURL) {
+    im.src = u.photoURL;
+    im.alt = "Foto Google";
+  }
+}
+
+function applyAvatarSelectionVisualOnly() {
+  updateAvatarOptionRowsVisibility();
   document.querySelectorAll(".av-opt").forEach((el) => {
-    const i = Number(el.dataset.av);
-    if (Number.isFinite(i)) el.classList.toggle("av-selected", i === idx);
+    const d = el.dataset.av;
+    if (d === "google")
+      el.classList.toggle("av-selected", myAvatarChoice === "g");
+    else if (d === "guest")
+      el.classList.toggle("av-selected", myAvatarChoice === "guest");
+    else {
+      const i = Number(d);
+      if (Number.isFinite(i))
+        el.classList.toggle("av-selected", myAvatarChoice === i);
+    }
   });
+}
+
+/** Cridat des de game.js quan canvia l'estat d'auth (Google vs convidat). */
+export function syncAvatarPickAfterAuth() {
+  loadAvatarChoiceIntoMemory();
+  if (myAvatarChoice === "g" && !hasGooglePhoto())
+    myAvatarChoice = auth.currentUser?.isAnonymous
+      ? "guest"
+      : clampAvatarIdx(localStorage.getItem("truc_avatar") || 0);
+  if (
+    myAvatarChoice === "guest" &&
+    (!auth.currentUser || !auth.currentUser.isAnonymous)
+  ) {
+    myAvatarChoice = hasGooglePhoto()
+      ? "g"
+      : clampAvatarIdx(localStorage.getItem("truc_avatar") || 0);
+  }
+  persistAvatarChoice();
+  applyAvatarSelectionVisualOnly();
+  const code = session.roomCode;
+  if (!code || session.mySeat === null) return;
+  set(
+    ref(db, `rooms/${code}/avatars/${K(session.mySeat)}`),
+    firebaseValueForChoice(myAvatarChoice),
+  ).catch(() => {});
+  get(ref(db, `rooms/${code}`))
+    .then((s) => {
+      if (s.exists() && session.roomCode === code) renderAll(s.val());
+    })
+    .catch(() => {});
+}
+
+function pickAvatar(arg) {
+  let next;
+  if (arg === "google" || arg === "g") {
+    if (!hasGooglePhoto()) return;
+    next = "g";
+  } else if (arg === "guest") {
+    if (!auth.currentUser?.isAnonymous) return;
+    next = "guest";
+  } else {
+    const idx = Number(arg);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= AVATAR_IMAGES.length) return;
+    next = idx;
+  }
+  if (
+    typeof next === "number" &&
+    next === _rivalAvatarIdx &&
+    _rivalAvatarIdx >= 0
+  )
+    return;
+  myAvatarChoice = next;
+  persistAvatarChoice();
+  applyAvatarSelectionVisualOnly();
   if (session.roomRef && session.mySeat !== null) {
     set(
       ref(db, `rooms/${session.roomCode}/avatars/${K(session.mySeat)}`),
-      idx,
+      firebaseValueForChoice(myAvatarChoice),
     ).catch(() => {});
     const w = $(`waitSlotGameAv${session.mySeat}`);
     if (w) {
-      w.innerHTML = getAvatarImg(idx);
-      w.classList.toggle("slot-game-av-empty", !getAvatarImg(idx));
+      const inner = avatarImgHtml(srcFromChoice(myAvatarChoice));
+      w.innerHTML = inner;
+      w.classList.toggle("slot-game-av-empty", !inner.trim());
     }
   }
 }
@@ -1734,13 +1990,10 @@ function pickAvatar(idx) {
 window.pickAvatar = pickAvatar;
 
 let _rivalAvatarIdx = -1;
-function getAvatarImg(idx) {
-  if (idx < 0 || idx >= AVATAR_IMAGES.length) return ""; // sin avatar → vacío
-  return `<img src="${AVATAR_IMAGES[idx]}" alt="Avatar">`;
-}
 
 function renderWaitingSlots(room, state) {
   const avs = room?.avatars || {};
+  const srcSelf = srcFromChoice(myAvatarChoice);
   for (let seat = 0; seat <= 1; seat++) {
     const ph = $(`waitSlotPhoto${seat}`);
     const nm = $(`waitSlotName${seat}`);
@@ -1766,19 +2019,16 @@ function renderWaitingSlots(room, state) {
     ph.src = lobbyPhotoForPlayer(pl);
     ph.alt = pName(state, seat);
 
-    const idx =
-      session.mySeat === seat
-        ? myAvatar
-        : Number(avs[K(seat)] ?? -1);
+    const src =
+      session.mySeat === seat ? srcSelf : srcFromFirebaseAvatar(avs[K(seat)]);
     gav.classList.remove("slot-game-av-empty");
-    gav.innerHTML = getAvatarImg(idx);
-    if (!String(gav.innerHTML).trim())
-      gav.classList.add("slot-game-av-empty");
+    gav.innerHTML = avatarImgHtml(src);
+    if (!String(gav.innerHTML).trim()) gav.classList.add("slot-game-av-empty");
 
     const isReady = !!state.ready?.[K(seat)];
     bd.classList.toggle("slot-badge-ready", isReady);
     if (isReady) {
-      bd.textContent = "¡ESTÀ PREPARAT!";
+      bd.textContent = "PREPARAT!";
       bd.dataset.state = "ready";
     } else {
       bd.textContent = "Triant avatar...";
@@ -1789,20 +2039,26 @@ function renderWaitingSlots(room, state) {
 
 function renderAvatars(room) {
   const avs = room?.avatars || {};
-  const myIdx = myAvatar; // siempre usar variable local, nunca Firebase
-  const rivIdx = Number(avs[K(other(session.mySeat))] ?? -1);
-  _rivalAvatarIdx = rivIdx;
+  const rawRiv = avs[K(other(session.mySeat))];
+  _rivalAvatarIdx = drawingIndexFromFirebase(rawRiv);
   const myEl = $("myAv"),
     rivEl = $("rivalAv");
 
-  if (myEl) myEl.innerHTML = getAvatarImg(myIdx);
-  if (rivEl) rivEl.innerHTML = getAvatarImg(rivIdx);
+  if (myEl) myEl.innerHTML = avatarImgHtml(srcFromChoice(myAvatarChoice));
+  if (rivEl) rivEl.innerHTML = avatarImgHtml(srcFromFirebaseAvatar(rawRiv));
 
-  // Gray out avatar options that the rival has chosen
+  // Gray out avatar options that the rival has chosen (només dibuixos, mateix índex)
   document.querySelectorAll(".av-opt").forEach((el) => {
-    const i = Number(el.dataset.av);
+    const d = el.dataset.av;
+    if (d === "google" || d === "guest") {
+      el.classList.remove("av-taken");
+      el.style.opacity = "1";
+      el.title = "";
+      return;
+    }
+    const i = Number(d);
     if (!Number.isFinite(i)) return;
-    const takenByRival = i === rivIdx && rivIdx >= 0;
+    const takenByRival = i === _rivalAvatarIdx && _rivalAvatarIdx >= 0;
     el.classList.toggle("av-taken", takenByRival);
     el.style.opacity = takenByRival ? "0.3" : "1";
     el.title = takenByRival ? "Aquest avatar l'usa el teu rival" : "";
@@ -1820,9 +2076,10 @@ export function startSession(code) {
   // Sobreescribir nuestro avatar en Firebase al reconectar,
   // por si hay datos de una sesión anterior
   if (session.mySeat !== null) {
-    set(ref(db, `rooms/${code}/avatars/${K(session.mySeat)}`), myAvatar).catch(
-      () => {},
-    );
+    set(
+      ref(db, `rooms/${code}/avatars/${K(session.mySeat)}`),
+      firebaseValueForChoice(myAvatarChoice),
+    ).catch(() => {});
   }
 
   unsubGame = onValue(session.roomRef, (snap) => {
@@ -1965,7 +2222,10 @@ async function createRoom() {
   session.mySeat = 0;
   saveLS(name, code, 0);
   if ($("roomInput")) $("roomInput").value = code;
-  set(ref(db, `rooms/${code}/avatars/${K(0)}`), myAvatar).catch(() => {});
+  set(
+    ref(db, `rooms/${code}/avatars/${K(0)}`),
+    firebaseValueForChoice(myAvatarChoice),
+  ).catch(() => {});
   setLobbyMsg(`Sala ${code} creada.`, "good");
   _pendingCreateVisibility = "public";
   startSession(code);
@@ -2022,9 +2282,10 @@ async function joinRoom() {
   else if (p0?.name === name) session.mySeat = 0;
   else session.mySeat = 1;
   saveLS(name, code, session.mySeat);
-  set(ref(db, `rooms/${code}/avatars/${K(session.mySeat)}`), myAvatar).catch(
-    () => {},
-  );
+  set(
+    ref(db, `rooms/${code}/avatars/${K(session.mySeat)}`),
+    firebaseValueForChoice(myAvatarChoice),
+  ).catch(() => {});
   setLobbyMsg(`Unit com J${session.mySeat}.`, "good");
   startSession(code);
 }
@@ -2050,8 +2311,7 @@ async function leaveRoom() {
         const hn = st?.handNumber;
         const waitingPreLobby =
           estado === "waiting" && real(hn ?? OFFSET) === 0;
-        const hostTancaSalaEspera =
-          waitingPreLobby && session.mySeat === 0;
+        const hostTancaSalaEspera = waitingPreLobby && session.mySeat === 0;
 
         const gameEndReason =
           st?.gameEndReason ?? _lastState?.gameEndReason ?? null;
@@ -2230,9 +2490,7 @@ async function limpiarSalasAntiguas() {
       const p1 = st?.players?.[K(1)];
       const n = (p0 ? 1 : 0) + (p1 ? 1 : 0);
       const salaTrencada =
-        n === 1 &&
-        !preGameLobby &&
-        ahora - la > ORPHAN_ROOM_MAX_MS;
+        n === 1 && !preGameLobby && ahora - la > ORPHAN_ROOM_MAX_MS;
       if (inactiva || finalizada || salaTrencada) {
         borrados.push(remove(ref(db, `rooms/${child.key}`)));
       }
@@ -2269,6 +2527,102 @@ const FRASES = [
 let _canChat = true;
 let _unsubPhrases = null;
 
+/** Amplada màx. del menú (compacte); la posició es clampa al viewport */
+const PHRASE_MENU_MAX_W = 272;
+
+function positionPhraseMenu() {
+  const menu = $("myPhraseMenu");
+  const av = $("myAvatarContainer");
+  if (!menu || !av || menu.classList.contains("hidden")) return;
+  const vv = window.visualViewport;
+  const vw = vv?.width ?? window.innerWidth;
+  const pad = 12;
+  const menuW = Math.min(PHRASE_MENU_MAX_W, Math.max(120, vw - pad * 2));
+  const rect = av.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  let left = cx - menuW / 2;
+  left = Math.max(pad, Math.min(left, vw - pad - menuW));
+  const gap = 8;
+  const bottom = window.innerHeight - rect.top + gap;
+  menu.style.width = `${menuW}px`;
+  menu.style.left = `${left}px`;
+  menu.style.right = "auto";
+  menu.style.bottom = `${bottom}px`;
+  menu.style.top = "auto";
+}
+
+function hidePhraseMenu() {
+  const menu = $("myPhraseMenu");
+  if (!menu) return;
+  menu.classList.add("hidden");
+  menu.setAttribute("aria-hidden", "true");
+  menu.style.width = "";
+  menu.style.left = "";
+  menu.style.right = "";
+  menu.style.bottom = "";
+  menu.style.top = "";
+}
+
+function phraseMenuOnViewportChange() {
+  const menu = $("myPhraseMenu");
+  if (!menu || menu.classList.contains("hidden")) return;
+  positionPhraseMenu();
+}
+
+const SPEECH_BUBBLE_MAX_W = 272;
+
+function bubbleAnchorId(bubbleId) {
+  if (bubbleId === "myBubble") return "myAvatarContainer";
+  if (bubbleId === "rivalBubble") return "rivalAvatarContainer";
+  return null;
+}
+
+function positionSpeechBubble(bubbleId) {
+  const b = $(bubbleId);
+  const aid = bubbleAnchorId(bubbleId);
+  if (!b || !aid || b.classList.contains("hidden")) return;
+  const av = $(aid);
+  if (!av) return;
+  const vv = window.visualViewport;
+  const vw = vv?.width ?? window.innerWidth;
+  const pad = 12;
+  const bw = Math.min(SPEECH_BUBBLE_MAX_W, Math.max(120, vw - pad * 2));
+  const rect = av.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  let left = cx - bw / 2;
+  left = Math.max(pad, Math.min(left, vw - pad - bw));
+  const gap = 8;
+  b.style.width = `${bw}px`;
+  b.style.left = `${left}px`;
+  b.style.right = "auto";
+  b.style.transform = "none";
+  if (bubbleId === "myBubble") {
+    b.style.bottom = `${window.innerHeight - rect.top + gap}px`;
+    b.style.top = "auto";
+  } else {
+    b.style.top = `${rect.bottom + gap}px`;
+    b.style.bottom = "auto";
+  }
+}
+
+function hideSpeechBubbleStyles(el) {
+  if (!el) return;
+  el.style.width = "";
+  el.style.left = "";
+  el.style.right = "";
+  el.style.bottom = "";
+  el.style.top = "";
+  el.style.transform = "";
+}
+
+function onGameViewportChange() {
+  phraseMenuOnViewportChange();
+  for (const id of ["myBubble", "rivalBubble"]) {
+    const el = $(id);
+    if (el && !el.classList.contains("hidden")) positionSpeechBubble(id);
+  }
+}
+
 function buildPhraseMenu() {
   const menu = $("myPhraseMenu");
   if (!menu) return;
@@ -2300,8 +2654,12 @@ function togglePhraseMenu() {
   if (menu.classList.contains("hidden")) {
     buildPhraseMenu();
     menu.classList.remove("hidden");
+    menu.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => positionPhraseMenu());
+    });
   } else {
-    menu.classList.add("hidden");
+    hidePhraseMenu();
   }
 }
 
@@ -2310,12 +2668,21 @@ function showBubble(bubbleId, text) {
   if (!b) return;
   b.textContent = text;
   b.classList.remove("hidden");
-  // Reinicia la animación
-  b.style.animation = "none";
-  void b.offsetWidth;
-  b.style.animation = "";
+  b.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      positionSpeechBubble(bubbleId);
+      b.style.animation = "none";
+      void b.offsetWidth;
+      b.style.animation = "";
+    });
+  });
   clearTimeout(b._hideTimer);
-  b._hideTimer = setTimeout(() => b.classList.add("hidden"), 4000);
+  b._hideTimer = setTimeout(() => {
+    b.classList.add("hidden");
+    b.setAttribute("aria-hidden", "true");
+    hideSpeechBubbleStyles(b);
+  }, 4000);
 }
 window.showBubble = showBubble;
 
@@ -2323,8 +2690,7 @@ window.showBubble = showBubble;
 function sendPhrase(text) {
   if (!_canChat || !session.roomCode) return;
 
-  // Cierra el menú
-  $("myPhraseMenu")?.classList.add("hidden");
+  hidePhraseMenu();
 
   // Muestra en mi pantalla
   showBubble("myBubble", text);
@@ -2361,6 +2727,7 @@ function initPhraseListener(code) {
 }
 
 export function detachRoomListeners() {
+  cancelPreGameRoomOnDisconnect();
   stopBetween();
   stopTurnTimer();
   clearAbsenceTimers();
@@ -2548,23 +2915,25 @@ export function initApp() {
     await leaveRoom();
   });
   $("goRematchBtn")?.addEventListener("click", requestRematch);
-  // Menú de frases: el propi avatar i el del rival (mateixa acció; abans el clic al rival es propagava al document i tancava el menú a l'instant)
+  // Menú de frases: només el propi avatar (myZone); cada jugador ve el seu com a #myAvatarContainer
   const onPhraseAvatarTap = (e) => {
     e.preventDefault();
     togglePhraseMenu();
   };
   $("myAvatarContainer")?.addEventListener("click", togglePhraseMenu);
   $("myAvatarContainer")?.addEventListener("touchend", onPhraseAvatarTap);
-  $("rivalAvatarContainer")?.addEventListener("click", togglePhraseMenu);
-  $("rivalAvatarContainer")?.addEventListener("touchend", onPhraseAvatarTap);
 
-  // Cerrar al hacer click fuera
+  window.addEventListener("resize", onGameViewportChange);
+  window.visualViewport?.addEventListener("resize", onGameViewportChange);
+  window.visualViewport?.addEventListener("scroll", onGameViewportChange);
+
+  // Tancar el menú si es fa clic fora (no cal excloure rival per obrir; només my obre)
   document.addEventListener("click", (e) => {
     const myW = $("myAvatarContainer");
-    const rivW = $("rivalAvatarContainer");
-    if (!myW?.contains(e.target) && !rivW?.contains(e.target)) {
-      $("myPhraseMenu")?.classList.add("hidden");
-    }
+    const pm = $("myPhraseMenu");
+    if (myW?.contains(e.target)) return;
+    if (pm?.contains(e.target)) return;
+    hidePhraseMenu();
   });
 
   async function onPlayerReadyClick() {
@@ -2726,11 +3095,18 @@ export function initApp() {
   });
   document.querySelectorAll(".av-opt").forEach((el) => {
     el.addEventListener("click", () => {
-      const i = Number(el.dataset.av);
-      if (Number.isFinite(i)) pickAvatar(i);
+      const raw = el.dataset.av;
+      if (raw === "google") pickAvatar("google");
+      else if (raw === "guest") pickAvatar("guest");
+      else {
+        const i = Number(raw);
+        if (Number.isFinite(i)) pickAvatar(i);
+      }
     });
   });
-  pickAvatar(myAvatar);
+  loadAvatarChoiceIntoMemory();
+  updateAvatarOptionRowsVisibility();
+  applyAvatarSelectionVisualOnly();
   loadLS();
   loadRoomList();
 }

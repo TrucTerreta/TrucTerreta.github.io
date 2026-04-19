@@ -5,6 +5,7 @@ import {
   initApp,
   tryReconnectFromLocalStorage,
   detachRoomListeners,
+  syncAvatarPickAfterAuth,
 } from "./ui.js";
 
 const WINS_LS_PREFIX = "truc_wins_";
@@ -86,6 +87,11 @@ async function applySignedInUi(user) {
     updateLobbyProfileHeader(user);
   } catch (e) {
     console.error("updateLobbyProfileHeader:", e);
+  }
+  try {
+    syncAvatarPickAfterAuth();
+  } catch (e) {
+    console.error("syncAvatarPickAfterAuth:", e);
   }
   try {
     await tryReconnectFromLocalStorage();

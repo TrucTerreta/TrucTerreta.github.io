@@ -24,7 +24,7 @@ PANTALLA 1 · LOBBY
       />
       <div class="auth-head">
         <h1 class="auth-title">El Truc de la Terreta</h1>
-        <h2 class="auth-subtitle">Juga al truc original valencià! - Gratis</h2>
+        <h2 class="auth-subtitle">Juga gratis al truc original valencià!</h2>
       </div>
     </div>
     <div class="auth-actions">
@@ -93,7 +93,7 @@ PANTALLA 1 · LOBBY
 
     <div class="lobby-hub-footer">
       <button type="button" id="btn-crear-publica" class="lbtn lbtn-primary lobby-hub-btn">
-        🌍 Crear Sala Pública
+        🌍 Crear sala pública
       </button>
       <div class="lobby-hub-footer-row">
         <button type="button" id="btn-crear-privada" class="lbtn lbtn-secondary lobby-hub-btn lobby-hub-btn-compact">
@@ -150,7 +150,6 @@ PANTALLA 2 · MESA DE JUEGO
     <div id="rivalZone">
       <div class="rival-header">
         <div class="player-avatar-wrap" id="rivalAvatarContainer">
-          <div id="rivalBubble" class="speech-bubble rival-bubble hidden"></div>
           <div id="rivalAv" class="player-av-sm"></div>
           <svg class="av-ring" id="rivalRing" viewBox="0 0 56 56">
             <circle class="timer-ring-bg" cx="28" cy="28" r="25"/>
@@ -171,8 +170,6 @@ PANTALLA 2 · MESA DE JUEGO
       <div id="myCards" class="my-cards"></div>
       <div class="my-zone-header">
         <div class="player-avatar-wrap" id="myAvatarContainer">
-          <div id="myBubble" class="speech-bubble hidden"></div>
-          <div id="myPhraseMenu" class="phrase-menu hidden"></div>
           <div id="myAv" class="player-av-sm"></div>
           <svg class="av-ring" id="myRing" viewBox="0 0 56 56">
             <circle class="timer-ring-bg" cx="28" cy="28" r="25"/>
@@ -203,15 +200,15 @@ PANTALLA 2 · MESA DE JUEGO
   </div>
 
   <div class="cfg-section">
-    <div class="cfg-label">Botons</div>
+    <div class="cfg-label">Botons:</div>
     <div class="cfg-options">
       <button class="cfg-opt" data-cfg="buttonSize" data-val="normal">Normal</button>
-      <button class="cfg-opt" data-cfg="buttonSize" data-val="large">Grans</button>
+      <button class="cfg-opt" data-cfg="buttonSize" data-val="large">Gran</button>
     </div>
   </div>
 
   <div class="cfg-section">
-    <div class="cfg-label">Fons de la taula</div>
+    <div class="cfg-label">Fons de la taula:</div>
     <div class="cfg-options">
       <button class="cfg-opt" data-cfg="tableBackground" data-val="green">Verd</button>
       <button class="cfg-opt" data-cfg="tableBackground" data-val="bg2">Blau</button>
@@ -232,10 +229,10 @@ PANTALLA 2 · MESA DE JUEGO
   <div id="actionPanel">
     <div id="offerMsg"    class="offer-msg hidden"></div>
     <div id="actionBtns" class="action-btns">
-      <button id="envitBtn" class="abtn abtn-green action-btn hidden">Envidar</button>
-      <button id="faltaBtn" class="abtn abtn-green action-btn hidden">Falta envit</button>
-      <button id="trucBtn"  class="abtn abtn-gold  action-btn hidden">Trucar</button>
-      <button id="mazoBtn"  class="abtn abtn-red   action-btn hidden">Me'n vaig</button>
+      <button id="envitBtn" class="abtn btn-envit-1 action-btn hidden">Envidar</button>
+      <button id="faltaBtn" class="abtn btn-envit-3 action-btn hidden">Falta envit</button>
+      <button id="trucBtn"  class="abtn btn-truc-1 action-btn hidden">Trucar</button>
+      <button id="mazoBtn"  class="abtn btn-reject action-btn hidden">Me'n vaig</button>
     </div>
     <div id="responseArea" class="response-area hidden"></div>
     <div id="statusMsg"    class="status-msg">⏳ Esperant al segon jugador…</div>
@@ -271,23 +268,23 @@ PANTALLA 2 · MESA DE JUEGO
       <div class="waiting-faceoff" aria-label="Jugadors">
         <div id="slot-player-0" class="player-wait-slot" data-seat="0">
           <span class="slot-role">Amfitrió</span>
-          <div class="slot-photo-frame">
-            <img id="waitSlotPhoto0" class="slot-photo" src="Media/Images/Others/avatar-convidat.webp" alt="" width="72" height="72" decoding="async" />
+          <div class="slot-photo-frame slot-photo-frame--lobby-hidden" aria-hidden="true">
+            <img id="waitSlotPhoto0" class="slot-photo" src="" alt="" width="72" height="72" decoding="async" />
           </div>
           <div id="waitSlotName0" class="slot-name">—</div>
-          <div id="waitSlotGameAv0" class="slot-game-av" aria-hidden="true"></div>
+          <div id="waitSlotGameAv0" class="slot-game-av"></div>
           <div id="waitSlotBadge0" class="slot-badge" data-state="pendent">Pendent...</div>
         </div>
 
         <div class="waiting-vs" aria-hidden="true">VS</div>
 
         <div id="slot-player-1" class="player-wait-slot" data-seat="1">
-          <span class="slot-role">Invitat</span>
-          <div class="slot-photo-frame">
-            <img id="waitSlotPhoto1" class="slot-photo" src="Media/Images/Others/avatar-convidat.webp" alt="" width="72" height="72" decoding="async" />
+          <span class="slot-role">Convidat</span>
+          <div class="slot-photo-frame slot-photo-frame--lobby-hidden" aria-hidden="true">
+            <img id="waitSlotPhoto1" class="slot-photo" src="" alt="" width="72" height="72" decoding="async" />
           </div>
           <div id="waitSlotName1" class="slot-name">—</div>
-          <div id="waitSlotGameAv1" class="slot-game-av" aria-hidden="true"></div>
+          <div id="waitSlotGameAv1" class="slot-game-av"></div>
           <div id="waitSlotBadge1" class="slot-badge" data-state="pendent">Pendent...</div>
         </div>
       </div>
@@ -295,6 +292,12 @@ PANTALLA 2 · MESA DE JUEGO
       <div class="avatar-pick">
         <div class="avatar-pick-lbl">Tria el teu avatar:</div>
         <div class="avatar-options">
+          <div class="av-opt av-opt-google hidden" data-av="google" title="Foto del compte Google">
+            <img class="av-opt-google-img" src="" alt="" width="48" height="48" decoding="async" />
+          </div>
+          <div class="av-opt av-opt-guest hidden" data-av="guest" title="Avatar de convidat">
+            <img src="Media/Images/Others/avatar-convidat.webp" alt="Convidat" width="48" height="48" decoding="async" />
+          </div>
           <div class="av-opt" data-av="0"><img src="Media/Images/Avatars/Avatar4.png" alt="Avatar 4"></div>
           <div class="av-opt" data-av="1"><img src="Media/Images/Avatars/Avatar3.png" alt="Avatar 3"></div>
           <div class="av-opt" data-av="2"><img src="Media/Images/Avatars/Avatar1.png" alt="Avatar 1"></div>
@@ -333,7 +336,7 @@ PANTALLA 2 · MESA DE JUEGO
   <!-- ── OVERLAY: ENTRE MANOS (resumen + 5 s) ── -->
   <div id="countdownOverlay" class="overlay hidden">
     <div class="overlay-card between-card">
-      <div class="ov-title">Resum de la mà</div>
+      <div class="ov-title">Resum de la mà:</div>
       <div id="countdownLabel" class="cd-summary"></div>
     </div>
   </div>
@@ -376,20 +379,18 @@ PANTALLA 2 · MESA DE JUEGO
           <span class="crc-col-ico crc-ico-stone" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="22" height="22"><ellipse cx="12" cy="14" rx="7" ry="5.5" fill="currentColor" opacity=".9"/></svg>
           </span>
-          <span>Partida a</span>
+          <span>Victòria:</span>
         </div>
         <label class="crc-opt">
           <input type="radio" name="crcPts" value="12" checked />
           <span class="crc-opt-card">
             <span class="crc-opt-title">12 pedres</span>
-            <span class="crc-opt-hint">Partida clàssica</span>
           </span>
         </label>
         <label class="crc-opt">
           <input type="radio" name="crcPts" value="24" />
           <span class="crc-opt-card">
             <span class="crc-opt-title">24 pedres</span>
-            <span class="crc-opt-hint">Partida llarga</span>
           </span>
         </label>
       </div>
@@ -398,7 +399,7 @@ PANTALLA 2 · MESA DE JUEGO
           <span class="crc-col-ico crc-ico-user" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 12a4 4 0 100-8 4 4 0 000 8zm0 2c-4.42 0-8 1.79-8 4v2h16v-2c0-2.21-3.58-4-8-4z"/></svg>
           </span>
-          <span>Jugadors</span>
+          <span>Jugadors:</span>
         </div>
         <label class="crc-opt">
           <input type="radio" name="crcModo" value="1v1" checked />
@@ -411,7 +412,7 @@ PANTALLA 2 · MESA DE JUEGO
           <input type="radio" name="crcModo" value="2v2" disabled />
           <span class="crc-opt-card">
             <span class="crc-opt-title">2 vs 2</span>
-            <span class="crc-opt-hint">Pròximament</span>
+            <span class="crc-opt-hint">Pròximament...</span>
           </span>
         </label>
       </div>
@@ -452,5 +453,10 @@ PANTALLA 2 · MESA DE JUEGO
     </div>
   </div>
 </div>
+
+<!-- Menú i bafarades: fora de #table per no retallar (overflow) -->
+<div id="myPhraseMenu" class="phrase-menu hidden" aria-hidden="true"></div>
+<div id="myBubble" class="speech-bubble hidden" aria-hidden="true"></div>
+<div id="rivalBubble" class="speech-bubble rival-bubble hidden" aria-hidden="true"></div>
 </body>
 </html>
