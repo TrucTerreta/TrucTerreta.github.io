@@ -751,6 +751,16 @@ body {
   white-space: nowrap;
 }
 
+@media (max-width: 520px) {
+  #btn-crear-privada,
+  #btn-unirse-codigo {
+    white-space: normal;
+    line-height: 1.15;
+    text-align: center;
+    word-break: keep-all;
+  }
+}
+
 .lobby-hub-btn {
   width: 100%;
   padding: 14px 16px !important;
@@ -2791,6 +2801,7 @@ body {
     inset 0 1px 0 rgba(255, 255, 255, 0.35),
     0 4px 0 rgba(0, 0, 0, 0.22),
     0 6px 14px rgba(0, 0, 0, 0.35);
+  color: #fff;
 }
 
 .abtn:active {
@@ -2803,59 +2814,59 @@ body {
 
 /* Semàfor: acceptar / rebutjar */
 .abtn.btn-accept {
-  background: linear-gradient(180deg, #4caf50 0%, #2e7d32 100%);
+  background: linear-gradient(180deg, #2f8f4f 0%, #1f6a39 100%);
   border-color: rgba(255, 255, 255, 0.35);
   color: #fff;
 }
 
 .abtn.btn-reject {
-  background: linear-gradient(180deg, #f44336 0%, #c62828 100%);
+  background: linear-gradient(180deg, #b2193e 0%, #7a0f2a 100%);
   border-color: rgba(255, 255, 255, 0.3);
   color: #fff;
 }
 
-/* Escala TRUC: 1 = més fosc (aposta baixa) → 3 = més clar (aposta alta) */
+/* Escala TRUC: 1 base, 2 més intens, 3 més fosc */
 .abtn.btn-truc-1 {
-  background: linear-gradient(180deg, #1565c0 0%, #0a2540 100%);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: linear-gradient(180deg, #2f8f4f 0%, #1f6a39 100%);
+  border-color: rgba(255, 255, 255, 0.28);
   color: #fff;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .abtn.btn-truc-2 {
-  background: linear-gradient(180deg, #42a5f5 0%, #1976d2 100%);
-  border-color: rgba(255, 255, 255, 0.32);
+  background: linear-gradient(180deg, #2aa14f 0%, #1f7e3f 100%);
+  border-color: rgba(255, 255, 255, 0.3);
   color: #fff;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.45);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .abtn.btn-truc-3 {
-  background: linear-gradient(180deg, #90caf9 0%, #42a5f5 100%);
-  border-color: rgba(255, 255, 255, 0.45);
+  background: linear-gradient(180deg, #1f7e3f 0%, #14522a 100%);
+  border-color: rgba(255, 255, 255, 0.26);
   color: #fff;
   text-shadow:
     1px 1px 2px rgba(0, 0, 0, 0.65),
     0 0 3px rgba(0, 0, 0, 0.35);
 }
 
-/* Escala ENVIT (oliva/bosc): 1 = més fosc → 3 = més clar */
+/* Escala ENVIT: 1 base, 2 més intens, 3 més fosc */
 .abtn.btn-envit-1 {
-  background: linear-gradient(180deg, #558b2f 0%, #263d14 100%);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(180deg, #2f8f4f 0%, #1f6a39 100%);
+  border-color: rgba(255, 255, 255, 0.28);
   color: #fff;
   text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 .abtn.btn-envit-2 {
-  background: linear-gradient(180deg, #8bc34a 0%, #558b2f 100%);
-  border-color: rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, #2aa14f 0%, #1f7e3f 100%);
+  border-color: rgba(255, 255, 255, 0.3);
   color: #fff;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.45);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .abtn.btn-envit-3 {
-  background: linear-gradient(180deg, #c5e1a5 0%, #8bc34a 100%);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(180deg, #1f7e3f 0%, #14522a 100%);
+  border-color: rgba(255, 255, 255, 0.26);
   color: #fff;
   text-shadow:
     1px 1px 2px rgba(0, 0, 0, 0.65),

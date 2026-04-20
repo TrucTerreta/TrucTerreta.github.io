@@ -1340,20 +1340,45 @@ async function animateHUDPoints(id, targetValue, hudIdx) {
   if (el.dataset.animating === "true") return;
   el.dataset.animating = "true";
 
+  const diff = targetValue - current;
+  const stepMs = diff <= 2 ? 500 : diff <= 5 ? 250 : 120;
+  const g = globalThis.gsap;
+
   // 4. Subimos de uno en uno
   while (current < targetValue) {
     current++;
     _oldHUD[hudIdx] = current; // Guardamos el progreso
 
-    // Pausa dramática de medio segundo
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, stepMs));
 
     el.textContent = current;
 
-    // Disparamos el destello CSS
-    el.classList.remove("score-animate");
-    void el.offsetWidth; // Truquito para reiniciar animaciones CSS
-    el.classList.add("score-animate");
+    if (current === targetValue && g) {
+      g.fromTo(
+        el,
+        { scale: 1 },
+        {
+          scale: 1.7,
+          duration: 0.12,
+          ease: "power2.out",
+          yoyo: true,
+          repeat: 1,
+          onComplete: () => {
+            el.style.transform = "";
+          },
+        },
+      );
+      g.fromTo(
+        el,
+        { textShadow: "0 0 0px #e8ab2a" },
+        {
+          textShadow: "0 0 24px #e8ab2a",
+          duration: 0.12,
+          yoyo: true,
+          repeat: 1,
+        },
+      );
+    }
   }
 
   // Liberamos el seguro al terminar
