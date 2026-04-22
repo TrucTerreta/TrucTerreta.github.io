@@ -1510,11 +1510,17 @@ body {
   color: var(--dim);
 }
 .chat-send {
+  flex: 0 0 42px;
+  min-width: 42px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--gold);
   color: #0b1512;
   border: none;
-  padding: 0 14px;
-  font-size: 16px;
+  padding: 0;
+  font-size: 18px;
   font-weight: 900;
   cursor: pointer;
   transition: opacity 0.15s;
@@ -1782,6 +1788,12 @@ body {
   }
   #chatPanel {
     width: 200px;
+  }
+  .chat-send {
+    flex-basis: 40px;
+    min-width: 40px;
+    min-height: 34px;
+    font-size: 17px;
   }
   .playing-card,
   .card-back {
