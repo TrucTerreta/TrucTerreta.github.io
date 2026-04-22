@@ -2,7 +2,23 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta
+    name="description"
+    content="Juga gratis al truc original valencià i reta als teus amics a El Truc de la Terreta."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ca_ES" />
+  <meta property="og:site_name" content="El Truc de la Terreta" />
+  <meta
+    property="og:title"
+    content="El Truc de la Terreta - Juga gratis i demostra qui mana!"
+  />
+  <meta
+    property="og:description"
+    content="Reta als teus amics al truc valencià i entra a la partida en un clic."
+  />
+  <meta property="og:image" content="Media/Images/Others/portada.png" />
   <title>El Truc de la Terreta</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -324,6 +340,9 @@ PANTALLA 2 · MESA DE JUEGO
       <div id="waitingStatus" class="waiting-status">Esperant el segon jugador...</div>
 
       <div class="waiting-actions">
+        <button type="button" id="waitingInviteWhatsappBtn" class="lbtn lbtn-secondary waiting-action-btn">
+          📲 Convidar per WhatsApp
+        </button>
         <button type="button" id="hostReadyBtn" class="lbtn lbtn-secondary waiting-action-btn hidden">
           ✋ Estic preparat!
         </button>

@@ -18,7 +18,6 @@ import {
   playVersusIntro,
   playCenterTableMessage,
   animatePlay,
-  playIncomingOfferShake,
   startTurnTimer,
   stopTurnTimer,
   playGameOverPresentation,
@@ -692,7 +691,6 @@ function renderActions(state) {
         (h.pendingOffer.kind === "truc" && Number(h.pendingOffer.level) === 4) ||
         (h.pendingOffer.kind === "envit" && h.pendingOffer.level === "falta");
       vibratePattern(isHighAlert ? [100, 50, 100, 50, 100] : [100, 50, 100]);
-      playIncomingOfferShake(isHighAlert);
     }
 
     om.textContent =

@@ -9,6 +9,7 @@ import {
 import {
   initApp,
   tryReconnectFromLocalStorage,
+  tryJoinRoomFromInviteLink,
   detachRoomListeners,
   syncAvatarPickAfterAuth,
 } from "./ui.js";
@@ -99,7 +100,10 @@ async function applySignedInUi(user) {
     console.error("syncAvatarPickAfterAuth:", e);
   }
   try {
-    await tryReconnectFromLocalStorage();
+    const joinedFromInvite = await tryJoinRoomFromInviteLink();
+    if (!joinedFromInvite) {
+      await tryReconnectFromLocalStorage();
+    }
   } catch (e) {
     console.error("tryReconnectFromLocalStorage:", e);
   }

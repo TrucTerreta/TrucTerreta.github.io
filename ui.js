@@ -365,6 +365,40 @@ function initLegalModal() {
   });
 }
 
+function openWhatsappInvite() {
+  const code = String(session.roomCode || "").trim().toUpperCase();
+  if (!code) {
+    setLobbyMsg("No s'ha pogut generar la invitació de la sala.", "err");
+    return;
+  }
+  const visTxt = session.roomVisibility === "public" ? "pública" : "privada";
+  const roomUrl = `${location.origin}${location.pathname}?sala=${encodeURIComponent(code)}`;
+  const privateCodeLine =
+    session.roomVisibility === "public" ? "" : `Codi de sala: ${code}\n`;
+  const joinHint =
+    session.roomVisibility === "public"
+      ? "Entra ací i t'uniràs directament si hi ha lloc."
+      : "Entra ací i t'uniràs directament a la sala privada.";
+  const msg =
+    `Ei! T'invite a una partida ${visTxt} d'El Truc de la Terreta.\n` +
+    privateCodeLine +
+    `Enllaç: ${roomUrl}\n` +
+    joinHint;
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, "_blank", "noopener,noreferrer");
+}
+
+export async function tryJoinRoomFromInviteLink() {
+  const params = new URLSearchParams(location.search);
+  const inviteCode = sanitize(params.get("sala") || "");
+  if (!inviteCode || session.roomCode) return false;
+  const roomInput = $("roomInput");
+  if (roomInput) roomInput.value = inviteCode;
+  await joinRoom();
+  history.replaceState(null, "", `${location.origin}${location.pathname}`);
+  return true;
+}
+
 // Re-exportació per a game.js (importa syncAvatarPickAfterAuth des d'ací)
 export { syncAvatarPickAfterAuth };
 
@@ -431,6 +465,7 @@ export function initApp() {
     await leaveRoom();
   });
   $("goRematchBtn")?.addEventListener("click", requestRematch);
+  $("waitingInviteWhatsappBtn")?.addEventListener("click", openWhatsappInvite);
   // Menú de frases: només el propi avatar (myZone); cada jugador ve el seu com a #myAvatarContainer
   const onPhraseAvatarTap = (e) => {
     e.preventDefault();
