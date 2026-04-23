@@ -34,6 +34,8 @@ import { clearAuthErr, showAuthErr, initAuthFlow } from "./auth.js";
 import {
   setLobbyMsg,
   createRoom,
+  createRoomAsBot,
+  normName,
   joinRoom,
   loadRoomList,
   limpiarSalasAntiguas,
@@ -72,6 +74,7 @@ import {
 import {
   renderAll,
   showTableMsg,
+  showTableMsgLocal,
   resetHandIntroPlayed,
   configureRenderer,
   cancelPreGameRoomOnDisconnect,
@@ -81,6 +84,19 @@ import {
 import { warmupMatchAssets } from "./assetPreloader.js";
 let _actionInProgress = false;
 const $ = (id) => document.getElementById(id);
+
+function setGuestAuthBusy(busy) {
+  const overlay = $("guestAuthBusy");
+  const btn = $("btn-invitado");
+  if (overlay) {
+    overlay.classList.toggle("hidden", !busy);
+    overlay.setAttribute("aria-hidden", busy ? "false" : "true");
+  }
+  if (btn) {
+    btn.disabled = !!busy;
+    btn.setAttribute("aria-busy", busy ? "true" : "false");
+  }
+}
 
 function offerCallText(kind, level) {
   if (kind === "envit") {
@@ -436,8 +452,14 @@ export function initApp() {
   $("btn-unirse-codigo")?.addEventListener("click", () =>
     openPrivateCodeModal("join"),
   );
+  $("botBtn")?.addEventListener("click", async () => {
+    const name = normName($("nameInput")?.value);
+    await createRoomAsBot(name);
+  });
   $("btn-invitado")?.addEventListener("click", async () => {
+    if ($("btn-invitado")?.disabled) return;
     clearAuthErr();
+    setGuestAuthBusy(true);
     try {
       await signInAnonymously(auth);
     } catch (err) {
@@ -451,6 +473,8 @@ export function initApp() {
         `No s'ha pogut entrar com a convidat (${code || err?.message || "error"}).${hint}`,
       );
       setLobbyMsg("No s'ha pogut entrar com a convidat.", "err");
+    } finally {
+      setGuestAuthBusy(false);
     }
   });
   $("lobbyEixirBtn")?.addEventListener("click", async () => {

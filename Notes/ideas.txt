@@ -25,4 +25,61 @@
 👎 Què tens? Un 4 o un 5?
 ⚔️ Si tires la manilla, te la mate
 😉 No guinyes l'ull que no tens res!
-Menú configuración: sonido on/off, apariencia cartas, apariencia fondo, etc.
+
+---
+1. Sistema de Progresión y Niveles (Rango Fallero/Festero)
+Dar a los jugadores un sentido de avance continuo simplemente por jugar.
+
+Puntos de Experiencia (XP): Otorgar XP por jugar partidas, ganar rondas (cotos), ganar envites, o usar la IA.
+Títulos Temáticos: En lugar de niveles numéricos aburridos, usa jerarquías relacionadas con la cultura valenciana o del Truc. Por ejemplo:
+Nivel 1-10: Forastero / Novato
+Nivel 11-20: Festero
+Nivel 21-30: Fallero Mayor
+Nivel 31-40: Mestre del Truc
+Nivel 50+: Leyenda de l'Albufera
+Recompensas por Nivel: Cada vez que suben de nivel, obtienen monedas virtuales o desbloquean algo nuevo (avatares, frases).
+2. Misiones y Retos (Diarios y Semanales)
+Mantienen la retención diaria al dar objetivos a corto plazo más allá de "simplemente ganar".
+
+Misiones Diarias:
+"Juega 3 partidas."
+"Gana un Envite habiendo cantado falta."
+"Llega al Truc, Retruc y Quatre y gánalo."
+"Juega una partida contra el Bot de IA en dificultad Difícil."
+Retos Semanales (más difíciles):
+"Gana 20 cotos."
+"Gana 5 partidas consecutivas."
+"Haz que el rival se retire en un envite 10 veces."
+3. Logros, Insignias y Medallas (Coleccionables)
+Para los jugadores completistas. Son hitos que quedan marcados en el perfil del jugador.
+
+"Farolero": Gana un envite importante teniendo menos de 25 puntos.
+"El Matador": Gana una ronda usando el As de Espadas o el As de Bastos en la última carta.
+"Ciborg del Truc": Vence a la IA en su máxima dificultad 10 veces.
+"Amic dels Amics": Juega 50 partidas con amigos añadidos en la app.
+"Remontada Épica": Gana una cama (partida) después de ir perdiendo por más de 15 piedras (puntos).
+4. Economía Virtual y Cosméticos (Personalización)
+A la gente le encanta destacar y personalizar su espacio de juego.
+
+Monedas del juego (Ej: "Piedras" o "Socarrats"): Se ganan jugando y cumpliendo misiones.
+Reversos de Cartas Desbloqueables: Diferentes diseños (clásicos, estilo moderno, motivos falleros, banderas, etc.).
+Tapetes (Fondos de Mesa): Desbloquear diferentes texturas de mesa (madera de bar, tapete verde de casino, mantel de tela tradicional).
+Avatares y Marcos de Perfil: Permitir a los jugadores elegir avatares divertidos. Los bordes del avatar pueden indicar su rango o liga (bronce, plata, oro).
+Frases de Chat / Emotes: Ya que en el Truc se habla mucho ("cante", "envide", provocar al rival), permitir desbloquear frases automáticas o emojis animados (un guiño, una gota de sudor, una llama) para comunicarse sin necesidad de chat de voz o texto libre (evitando también toxicidad).
+5. Competitivo: Ligas, Temporadas y Tablas de Clasificación (Leaderboards)
+Para el jugador hardcore que quiere demostrar que es el mejor.
+
+Sistema de Ligas (Rankeds): Una clasificación por puntos de habilidad (Elo). Desde Liga de Pueblo hasta Liga Autonómica.
+Temporadas (Seasons): Reiniciar los rangos cada 1 o 2 meses y dar recompensas exclusivas a los mejores jugadores de la temporada (ej. un reverso de carta de la "Temporada 1").
+Torneos de Fin de Semana: Eventos programados (ej. viernes por la noche) tipo "Torneo del Casal" donde los jugadores entran a un bracket eliminatorio para ganar grandes premios virtuales.
+6. Integración de la Inteligencia Artificial en la Gamificación
+Puesto que tienes un modelo RL entrenado, puedes sacarle mucho jugo:
+
+Modo "Derrota al Maestro": Un bot IA con un nivel de entrenamiento altísimo. Ofrecer una recompensa especial o insignia única a quien consiga ganarle una partida al mejor de 3.
+Análisis Post-Partida (Premium/Desbloqueable): Similar a Chess.com, al acabar la partida, la IA te dice qué porcentaje de tus jugadas fueron "óptimas" según el modelo matemático, dándote una puntuación de precisión (Ej: "Precisión de jugadas: 85%").
+¿Por dónde empezar? (MVP de Gamificación)
+Si quieres implementar esto poco a poco para no saturar tu base de datos de Firebase de golpe, te sugiero empezar por:
+
+Estadísticas Básicas en el Perfil: Partidas ganadas/perdidas, % de victorias.
+Un sistema de XP y Niveles simple (sin recompensas complejas todavía, solo el orgullo del nivel).
+Avatares (aunque sean 5 o 6 opciones básicas) para dar identidad.

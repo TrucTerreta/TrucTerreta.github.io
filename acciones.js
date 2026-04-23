@@ -43,9 +43,15 @@ const setPlayed = (h, seat, card) => {
 };
 const alreadyPlayed = (h, seat) => getPlayed(h, seat) !== null;
 
-function pushLog(st, text) {
+function pushLog(st, text, meta) {
   st.logs = st.logs || [];
-  st.logs.unshift({ text, at: Date.now() });
+  const row = { text, at: Date.now() };
+  if (meta?.envitProof?.cards?.length)
+    row.envitProof = {
+      points: Number(meta.envitProof.points) || 0,
+      cards: meta.envitProof.cards.filter(Boolean),
+    };
+  st.logs.unshift(row);
   st.logs = st.logs.slice(0, 30);
 }
 function addSA(h, seat, n = 1) {
@@ -189,6 +195,64 @@ export async function playCard(card) {
   }
 }
 
+export async function playCardAsBot(card) {
+  if (ui.locked) return;
+  ui.locked = true;
+  document
+    .querySelectorAll("#myCards .my-card-wrap")
+    .forEach((w) => w.classList.remove("playable"));
+  try {
+    await mutate((state) => {
+      const botSeat = 1;
+      const h = state.hand;
+      if (!h || state.status !== "playing" || h.status !== "in_progress")
+        return false;
+      if (h.mode !== "normal" || h.pendingOffer) return false;
+      if (h.turn !== botSeat) return false;
+      const _hist = h.trickHistory || [];
+      const _r1 = _hist.length > 0 ? _hist[0].winner : undefined;
+      const _r2 = _hist.length > 1 ? _hist[1].winner : undefined;
+      const _isDraw = (w) => w === 99 || w === null || w === undefined;
+      const _isWin = (w) => w === 0 || w === 1;
+      const _b1Draw = _hist.length >= 1 && _isDraw(_r1) && _r1 !== undefined;
+      const _b2Win = _hist.length >= 2 && _isWin(_r2);
+      const _b1Win = _hist.length >= 1 && _isWin(_r1);
+      const _b2Draw = _hist.length >= 2 && _isDraw(_r2) && _r2 !== undefined;
+      if ((_b1Draw && _b2Win) || (_b1Win && _b2Draw)) return false;
+      if (alreadyPlayed(h, botSeat)) {
+        console.warn("PLAYCARD BOT: already played");
+        return false;
+      }
+      const mine = fromHObj(h.hands?.[K(botSeat)]);
+      if (!mine.includes(card)) return false;
+      h.hands[K(botSeat)] = toHObj(mine.filter((c) => c !== card));
+      setPlayed(h, botSeat, card);
+      h.envitAvailable = false;
+      const plrName = state.players?.[K(botSeat)]?.name || `J${botSeat}`;
+      pushLog(state, `${plrName} juga ${cardLabel(card)}.`);
+      if (alreadyPlayed(h, other(botSeat))) {
+        Logica.resolveTrick(state);
+      } else {
+        h.turn = other(botSeat);
+        const isBaza1 = (h.trickHistory || []).length === 0;
+        h.envitAvailable = isBaza1;
+      }
+      return true;
+    });
+  } finally {
+    setTimeout(() => {
+      ui.locked = false;
+      if (session.roomRef) {
+        get(session.roomRef)
+          .then((snap) => {
+            if (snap.val()) _renderAll(snap.val());
+          })
+          .catch(() => {});
+      }
+    }, 90);
+  }
+}
+
 export async function goMazo() {
   await mutate((state) => {
     const h = state.hand;
@@ -274,6 +338,71 @@ export async function startOffer(kind) {
   });
 }
 
+export async function startOfferAsBot(kind) {
+  await mutate((state) => {
+    const botSeat = 1;
+    const h = state.hand;
+    if (!h || state.status !== "playing" || h.status !== "in_progress")
+      return false;
+    if (h.turn !== botSeat) return false;
+
+    if (kind === "envit" || kind === "falta") {
+      if (!(h.mode === "normal" || h.mode === "respond_truc")) return false;
+      if (!h.envitAvailable || h.envit.state !== "none") return false;
+
+      const level = kind === "falta" ? "falta" : 2;
+      h.resume = {
+        mode: h.mode,
+        turn: h.turn,
+        oldOffer: h.pendingOffer || null,
+      };
+      h.pendingOffer = {
+        kind: "envit",
+        level: level,
+        by: botSeat,
+        to: other(botSeat),
+      };
+      h.mode = "respond_envit";
+      h.turn = other(botSeat);
+
+      const nom = state.players?.[K(botSeat)]?.name || `J${botSeat}`;
+      pushLog(state, `${nom} canta ${kind === "falta" ? "FALTA" : "envit"}.`);
+      return true;
+    }
+
+    if (kind === "truc") {
+      if (h.mode !== "normal") return false;
+      if (h.pendingOffer) return false;
+
+      let trucLevel = 2;
+      if (h.truc.state === "accepted" && h.truc.responder === botSeat) {
+        trucLevel = Number(h.truc.acceptedLevel || 2) + 1;
+        if (trucLevel > 4) return false;
+      } else if (h.truc.state !== "none") return false;
+
+      h.resume = {
+        mode: h.mode,
+        turn: h.turn,
+        oldOffer: h.pendingOffer || null,
+      };
+      h.pendingOffer = {
+        kind: "truc",
+        level: trucLevel,
+        by: botSeat,
+        to: other(botSeat),
+      };
+      h.mode = "respond_truc";
+      h.turn = other(botSeat);
+      h.envitAvailable = true;
+
+      const nom = state.players?.[K(botSeat)]?.name || `J${botSeat}`;
+      pushLog(state, `${nom} canta truc.`);
+      return true;
+    }
+    return false;
+  });
+}
+
 export async function respondEnvit(choice) {
   await mutate((state) => {
     const h = state.hand,
@@ -305,6 +434,13 @@ export async function respondEnvit(choice) {
       const v0 = Logica.bestEnvit(fullHand0);
       const v1 = Logica.bestEnvit(fullHand1);
       const envitWinner = v0 > v1 ? 0 : v1 > v0 ? 1 : state.mano;
+      const perMa = v0 === v1;
+
+      // Precomputar la prueba AHORA con la mano completa (después las cartas
+      // jugadas en bazas se pierden de h.hands y el cálculo sería incorrecto).
+      const winnerFullHand = envitWinner === 0 ? fullHand0 : fullHand1;
+      const visible = Logica.collectTableCards(h);
+      const proof = Logica.bestEnvitProof(winnerFullHand, visible);
 
       h.envit = {
         state: "accepted",
@@ -312,7 +448,11 @@ export async function respondEnvit(choice) {
         responder: resp,
         acceptedLevel: offer.level,
         acceptedBy: session.mySeat,
-        winner: envitWinner, // ← guardar ganador aquí
+        winner: envitWinner,
+        perMa,
+        proof: proof.cards?.length > 0
+          ? { points: proof.points, cards: proof.cards }
+          : null,
       };
       h.envitAvailable = false;
       pushLog(
@@ -336,6 +476,104 @@ export async function respondEnvit(choice) {
       h.envitAvailable = false;
       const nomCaller = pName(state, caller);
       pushLog(state, `No vull l'envit. Puntuació al final de la mà.`);
+      resumeOffer(state);
+      return true;
+    }
+    if (choice === "torne") {
+      if (offer.level !== 2) return false;
+      h.pendingOffer = { kind: "envit", level: 4, by: resp, to: caller };
+      h.turn = caller;
+      h.mode = "respond_envit";
+      h.envitAvailable = false;
+      pushLog(state, "Torne a envit 4.");
+      return true;
+    }
+    if (choice === "falta") {
+      h.pendingOffer = {
+        kind: "envit",
+        level: "falta",
+        by: resp,
+        to: caller,
+        faltaFromLevel: offer.level === 4 ? 4 : 2,
+      };
+      h.turn = caller;
+      h.mode = "respond_envit";
+      h.envitAvailable = false;
+      pushLog(state, "Envit de falta.");
+      return true;
+    }
+    return false;
+  });
+}
+
+export async function respondEnvitAsBot(choice) {
+  await mutate((state) => {
+    const botSeat = 1;
+    const h = state.hand,
+      offer = h?.pendingOffer;
+    if (!h || state.status !== "playing" || h.status !== "in_progress")
+      return false;
+    if (
+      !offer ||
+      offer.kind !== "envit" ||
+      h.turn !== botSeat ||
+      h.mode !== "respond_envit"
+    )
+      return false;
+    const caller = offer.by,
+      resp = offer.to;
+    if (choice === "vull") {
+      const played0 = getPlayed(h, 0);
+      const played1 = getPlayed(h, 1);
+      const fullHand0 = played0
+        ? [...fromHObj(h.hands?.[K(0)]), played0]
+        : fromHObj(h.hands?.[K(0)]);
+      const fullHand1 = played1
+        ? [...fromHObj(h.hands?.[K(1)]), played1]
+        : fromHObj(h.hands?.[K(1)]);
+      const v0 = Logica.bestEnvit(fullHand0);
+      const v1 = Logica.bestEnvit(fullHand1);
+      const envitWinner = v0 > v1 ? 0 : v1 > v0 ? 1 : state.mano;
+      const perMa = v0 === v1;
+
+      const winnerFullHand = envitWinner === 0 ? fullHand0 : fullHand1;
+      const visible = Logica.collectTableCards(h);
+      const proof = Logica.bestEnvitProof(winnerFullHand, visible);
+
+      h.envit = {
+        state: "accepted",
+        caller,
+        responder: resp,
+        acceptedLevel: offer.level,
+        acceptedBy: botSeat,
+        winner: envitWinner,
+        perMa,
+        proof:
+          proof.cards?.length > 0
+            ? { points: proof.points, cards: proof.cards }
+            : null,
+      };
+      h.envitAvailable = false;
+      pushLog(
+        state,
+        `Envit acceptat (${offer.level === "falta" ? "falta" : offer.level}).`,
+      );
+      resumeOffer(state);
+      return true;
+    }
+    if (choice === "no_vull") {
+      h.envit = {
+        state: "rejected",
+        caller,
+        responder: resp,
+        offeredLevel: offer.level,
+        acceptedBy: null,
+        ...(offer.level === "falta"
+          ? { faltaFromLevel: offer.faltaFromLevel ?? null }
+          : {}),
+      };
+      h.envitAvailable = false;
+      pushLog(state, "No vull l'envit. Puntuació al final de la mà.");
       resumeOffer(state);
       return true;
     }
@@ -407,6 +645,71 @@ export async function respondTruc(choice) {
       const nom = pName(state, session.mySeat);
       // La lógica ahora calculará si el rival gana 1, 2 o 3 puntos según el nivel del Truc
       Logica.applyHandEnd(state, `${nom} no vol el Truc.`, session.mySeat);
+      return true;
+    }
+    if (choice === "retruque") {
+      if (offer.level !== 2) return false;
+      h.pendingOffer = { kind: "truc", level: 3, by: resp, to: caller };
+      h.turn = caller;
+      h.mode = "respond_truc";
+      h.envitAvailable = true;
+      pushLog(state, "Retruque a 3.");
+      return true;
+    }
+    if (choice === "val4") {
+      if (offer.level !== 3) return false;
+      h.pendingOffer = { kind: "truc", level: 4, by: resp, to: caller };
+      h.turn = caller;
+      h.mode = "respond_truc";
+      h.envitAvailable = true;
+      pushLog(state, "Val 4 al truc.");
+      return true;
+    }
+    return false;
+  });
+}
+
+export async function respondTrucAsBot(choice) {
+  await mutate((state) => {
+    const botSeat = 1;
+    const h = state.hand,
+      offer = h?.pendingOffer;
+    if (!h || state.status !== "playing" || h.status !== "in_progress")
+      return false;
+    if (
+      !offer ||
+      offer.kind !== "truc" ||
+      h.turn !== botSeat ||
+      h.mode !== "respond_truc"
+    )
+      return false;
+    const caller = offer.by,
+      resp = offer.to;
+    if (choice === "vull") {
+      h.truc = {
+        state: "accepted",
+        caller,
+        responder: resp,
+        acceptedLevel: offer.level,
+        acceptedBy: botSeat,
+      };
+      h.envitAvailable = false;
+      pushLog(state, `Truc acceptat (${offer.level}).`);
+      resumeOffer(state);
+      return true;
+    }
+    if (choice === "no_vull") {
+      h.truc = {
+        state: "rejected",
+        caller,
+        responder: resp,
+        acceptedLevel: offer.level - 1,
+        acceptedBy: null,
+      };
+      h.envitAvailable = false;
+
+      const nom = pName(state, botSeat);
+      Logica.applyHandEnd(state, `${nom} no vol el Truc.`, botSeat);
       return true;
     }
     if (choice === "retruque") {

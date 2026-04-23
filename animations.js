@@ -111,7 +111,9 @@ export async function animateHUDPoints(id, targetValue, hudIdx) {
   el.dataset.animating = "true";
 
   const diff = targetValue - current;
-  const stepMs = diff <= 2 ? 500 : diff <= 5 ? 250 : 120;
+  // Més punts d'un cop → cada pas una mica més lent (abans 120ms era massa ràpid)
+  const stepMs =
+    diff <= 2 ? 520 : diff <= 5 ? 360 : Math.min(420, 260 + Math.floor(diff / 2) * 28);
   const g = globalThis.gsap;
 
   while (current < targetValue) {
@@ -271,6 +273,147 @@ export function animatePlay(cardEl, flyEl, onDone) {
   );
 }
 
+function revealDealWrapsIfAborted(wraps) {
+  if (!wraps?.length) return;
+  for (const el of wraps) {
+    el.style.removeProperty("opacity");
+    el.style.removeProperty("transition");
+  }
+}
+
+/**
+ * Primera mà: cartes des del mazo lateral; opcionalment vol paral·lel cap a un munt
+ * i `flipAllSubtimeline` per girar-les totes juntes.
+ * @param {NodeListOf<Element>|Element[]} wraps - `.my-card-wrap`
+ * @param {{
+ *   flipSubtimeline?: (wrap: Element, index: number) => unknown;
+ *   flipAllSubtimeline?: (wraps: Element[]) => unknown;
+ *   onDealAborted?: (wraps: Element[]) => void;
+ * }} [options]
+ */
+export function animateMyHandDealFromDeck(wraps, options = {}) {
+  const { flipSubtimeline, flipAllSubtimeline, onDealAborted } = options;
+  const g = globalThis.gsap;
+  const deckPile = $("deckPile");
+  if (!g || !deckPile || !wraps?.length) {
+    revealDealWrapsIfAborted(wraps);
+    onDealAborted?.(Array.from(wraps));
+    return;
+  }
+
+  const deckRect = deckPile.getBoundingClientRect();
+  if (deckRect.width < 2 || deckRect.height < 2) {
+    revealDealWrapsIfAborted(wraps);
+    onDealAborted?.(Array.from(wraps));
+    return;
+  }
+
+  const deckOnLeft = deckRect.left < window.innerWidth / 2;
+  const gcx = deckOnLeft ? deckRect.left + deckRect.width : deckRect.left;
+  const gcy = deckRect.top + deckRect.height / 2;
+
+  const list = Array.from(wraps);
+  const parent = list[0]?.parentElement;
+  if (parent) void parent.offsetHeight;
+
+  const rectsPre = list.map((el) => el.getBoundingClientRect());
+  const fanCenters = rectsPre.map((r) => ({
+    x: r.left + r.width / 2,
+    y: r.top + r.height / 2,
+  }));
+  const mid = Math.min(1, Math.max(0, Math.floor(list.length / 2)));
+  const stackCenter = { x: fanCenters[mid].x, y: fanCenters[mid].y };
+  const stackXY = list.map((_, i) => ({
+    x: stackCenter.x - fanCenters[i].x,
+    y: stackCenter.y - fanCenters[i].y,
+  }));
+
+  list.forEach((el, i) => {
+    const r = rectsPre[i];
+    g.set(el, {
+      x: gcx - (r.left + r.width / 2),
+      y: gcy - (r.top + r.height / 2),
+      rotation: Math.random() * 14 - 7,
+      transformOrigin: "50% 50%",
+      autoAlpha: 1,
+      zIndex: 8 + i,
+    });
+  });
+
+  const tl = g.timeline({
+    onComplete: () => {
+      list.forEach((el) => {
+        el.style.transition = "none";
+        el.style.removeProperty("opacity");
+        el.style.removeProperty("z-index");
+      });
+      g.set(list, { clearProps: "transform,transformOrigin,opacity,visibility" });
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          list.forEach((el) => el.style.removeProperty("transition"));
+        });
+      });
+    },
+  });
+
+  const useStackAndFlipAll =
+    list.length === 3 && typeof flipAllSubtimeline === "function";
+
+  if (useStackAndFlipAll) {
+    const stagger = 0.28;
+    list.forEach((el, i) => {
+      const sx = stackXY[i].x;
+      const sy = stackXY[i].y;
+      const spin = (1 - i) * 24;
+      const one = g.timeline();
+      one.to(el, {
+        x: sx * 0.4,
+        y: sy * 0.4,
+        rotation: spin,
+        duration: 0.11,
+        ease: "power1.out",
+      });
+      one.to(el, {
+        x: sx * 0.78,
+        y: sy * 0.78,
+        rotation: -spin * 0.4,
+        duration: 0.1,
+        ease: "sine.inOut",
+      });
+      one.to(el, {
+        x: sx,
+        y: sy,
+        rotation: 0,
+        duration: 0.1,
+        ease: "power2.out",
+      });
+      tl.add(one, i * stagger);
+    });
+    const flipAll = flipAllSubtimeline(list);
+    if (flipAll) {
+      tl.add(flipAll, ">");
+    }
+  } else {
+    const dur = 0.38;
+    const ease = "power2.out";
+    list.forEach((el, i) => {
+      tl.to(
+        el,
+        { x: 0, y: 0, rotation: 0, duration: dur, ease },
+        i === 0 ? 0 : ">",
+      );
+      const flipSub = flipSubtimeline?.(el, i);
+      const flipDur =
+        flipSub && typeof flipSub.duration === "function"
+          ? flipSub.duration()
+          : Number(flipSub?.duration ?? 0);
+      if (flipSub && flipDur > 0) {
+        tl.add(flipSub, ">");
+      }
+    });
+  }
+}
+
 // --- Fi de partida: canvas-confetti + GSAP (.go-card) -------------------------
 const GO_CONFETTI_COLORS = ["#D32F2F", "#FBC02D", "#1976D2"];
 let _goConfettiFire = null;
@@ -314,28 +457,31 @@ function scheduleGoConfettiTimeout(fn, ms) {
 }
 
 function playGameOverConfettiWinner(fire) {
+  const burstCommon = {
+    particleCount: 88,
+    spread: 56,
+    startVelocity: 46,
+    gravity: 0.48,
+    ticks: 450,
+    decay: 0.945,
+    colors: GO_CONFETTI_COLORS,
+  };
   const burst = () => {
     fire({
-      particleCount: 88,
+      ...burstCommon,
       angle: 62,
-      spread: 56,
-      startVelocity: 50,
       origin: { x: 0, y: 1 },
-      colors: GO_CONFETTI_COLORS,
     });
     fire({
-      particleCount: 88,
+      ...burstCommon,
       angle: 118,
-      spread: 56,
-      startVelocity: 50,
       origin: { x: 1, y: 1 },
-      colors: GO_CONFETTI_COLORS,
     });
   };
   burst();
   scheduleGoConfettiTimeout(burst, 300);
   scheduleGoConfettiTimeout(burst, 620);
-  scheduleGoConfettiTimeout(resetGameOverConfettiOnly, 6500);
+  scheduleGoConfettiTimeout(resetGameOverConfettiOnly, 10500);
 }
 
 function playGameOverConfettiLoser(fire) {

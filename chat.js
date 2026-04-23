@@ -133,6 +133,7 @@ export function hidePhraseMenu() {
 }
 
 const SPEECH_BUBBLE_MAX_W = 272;
+const SPEECH_BUBBLE_MIN_W = 96;
 
 function bubbleAnchorId(bubbleId) {
   if (bubbleId === "myBubble") return "myAvatarContainer";
@@ -153,7 +154,7 @@ function positionSpeechBubble(bubbleId) {
   b.style.width = "auto";
   b.style.maxWidth = `${maxBw}px`;
   const measured = Math.ceil(b.getBoundingClientRect().width);
-  const bw = Math.min(maxBw, Math.max(56, measured));
+  const bw = Math.min(maxBw, Math.max(SPEECH_BUBBLE_MIN_W, measured));
   const rect = av.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   let left = cx - bw / 2;
@@ -270,7 +271,7 @@ export function renderSpeechBubble(bubbleId, withAnim = false) {
   document.body.appendChild(measure);
   const measured = Math.ceil(measure.getBoundingClientRect().width);
   measure.remove();
-  const bw = Math.min(maxBw, Math.max(56, measured));
+  const bw = Math.min(maxBw, Math.max(SPEECH_BUBBLE_MIN_W, measured));
 
   b.style.maxWidth = `${maxBw}px`;
   b.style.width = `${bw}px`;

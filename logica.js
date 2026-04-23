@@ -62,9 +62,15 @@ function addTW(h, seat) {
 function getSA(h, seat) {
   return real(h?.scoreAwards?.[K(seat)]);
 }
-function pushLog(st, text) {
+function pushLog(st, text, meta) {
   st.logs = st.logs || [];
-  st.logs.unshift({ text, at: Date.now() });
+  const row = { text, at: Date.now() };
+  if (meta?.envitProof?.cards?.length)
+    row.envitProof = {
+      points: Number(meta.envitProof.points) || 0,
+      cards: meta.envitProof.cards.filter(Boolean),
+    };
+  st.logs.unshift(row);
   st.logs = st.logs.slice(0, 30);
 }
 
@@ -140,6 +146,88 @@ export function bestEnvit(cards) {
       }
     }
   return best > 0 ? best : Math.max(0, ...cards.map(envitVal));
+}
+
+/** Cartes que han sortit al centre (bazas completades + jugada actual). */
+export function collectTableCards(h) {
+  const set = new Set();
+  for (const t of h?.allTricks || []) {
+    if (t.c0 && t.c0 !== EMPTY_CARD) set.add(t.c0);
+    if (t.c1 && t.c1 !== EMPTY_CARD) set.add(t.c1);
+  }
+  for (const seat of [0, 1]) {
+    const v = h?.played?.[PK(seat)];
+    if (v && v !== EMPTY_CARD) set.add(v);
+  }
+  return set;
+}
+
+function pairTableHits(pair, vis) {
+  const [a, b] = pair;
+  return (vis.has(a) ? 1 : 0) + (vis.has(b) ? 1 : 0);
+}
+
+function pairKey(pair) {
+  return [...pair].sort().join("|");
+}
+
+/**
+ * Cartes que justifiquen el millor envit i la puntuació d'envit (no el que es canta).
+ * @param {string[]} cards Mà completa (inclosa carta jugada a la 1a basa si escau).
+ * @param {Set<string>|Iterable<string>} visibleSet Cartes ja mostrades al centre (desempat).
+ */
+export function bestEnvitProof(cards, visibleSet) {
+  const vis =
+    visibleSet instanceof Set ? visibleSet : new Set(visibleSet || []);
+  const arr = (cards || []).filter((c) => c && c !== EMPTY_CARD);
+  if (!arr.length) return { points: 0, cards: [] };
+
+  let bestPair = 0;
+  const pairsAtBest = [];
+  for (let i = 0; i < arr.length; i++) {
+    for (let j = i + 1; j < arr.length; j++) {
+      const ci = arr[i],
+        cj = arr[j];
+      const a = parseCard(ci),
+        b = parseCard(cj);
+      if (a.suit !== b.suit) continue;
+      const v = 20 + envitVal(ci) + envitVal(cj);
+      if (v > bestPair) {
+        bestPair = v;
+        pairsAtBest.length = 0;
+        pairsAtBest.push([ci, cj]);
+      } else if (v === bestPair) {
+        pairsAtBest.push([ci, cj]);
+      }
+    }
+  }
+
+  if (bestPair > 0) {
+    pairsAtBest.sort((p1, p2) => {
+      const h1 = pairTableHits(p1, vis),
+        h2 = pairTableHits(p2, vis);
+      if (h1 !== h2) return h2 - h1;
+      return pairKey(p1).localeCompare(pairKey(p2));
+    });
+    const [c1, c2] = pairsAtBest[0];
+    const ordered = [c1, c2].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    return { points: bestPair, cards: ordered };
+  }
+
+  let bestSingle = 0;
+  for (const c of arr) bestSingle = Math.max(bestSingle, envitVal(c));
+  const singles = arr.filter((c) => envitVal(c) === bestSingle);
+  singles.sort((a, b) => {
+    const va = vis.has(a) ? 1 : 0,
+      vb = vis.has(b) ? 1 : 0;
+    if (va !== vb) return vb - va;
+    const ra = trickRank(a),
+      rb = trickRank(b);
+    if (ra !== rb) return rb - ra;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  const pick = singles[0];
+  return pick ? { points: bestSingle, cards: [pick] } : { points: 0, cards: [] };
 }
 
 // --- Hand factory -------------------------------------------------------------
@@ -221,6 +309,12 @@ export function handWinner(state) {
   return r1 !== 99 && r1 !== undefined ? r1 : state.mano;
 }
 
+function fullHandForSeat(h, seat) {
+  const played = getPlayed(h, seat);
+  const base = fromHObj(h.hands?.[K(seat)]);
+  return played ? [...base, played] : [...base];
+}
+
 export function applyHandEnd(state, reason, foldedSeat) {
   const h = state.hand;
   if (!h) return;
@@ -230,6 +324,8 @@ export function applyHandEnd(state, reason, foldedSeat) {
       s1 = getScore(state, 1);
     const meta = getPuntosParaGanar(state);
     if (s0 >= meta || s1 >= meta) {
+      state.lastAllTricks = h.allTricks || [];
+      pushLog(state, `Marcador: ${getScore(state, 0)}-${getScore(state, 1)}`);
       state.status = "game_over";
       state.winner = s0 > s1 ? 0 : s1 > s0 ? 1 : state.mano;
       state.hand = null;
@@ -245,10 +341,12 @@ export function applyHandEnd(state, reason, foldedSeat) {
   // --- 1. RESOLVER ENVIT ---
   if (h.envit.state === "accepted") {
     let ew = isFold ? winnerSeat : (h.envit.winner ?? null); // ← usar winner guardado
+    let envitPerMa = !isFold && (h.envit.perMa === true);
     if (ew === null) {
       // Fallback por si winner no está (partidas antiguas)
       const v0 = bestEnvit(fromHObj(h.hands?.[K(0)]));
       const v1 = bestEnvit(fromHObj(h.hands?.[K(1)]));
+      envitPerMa = !isFold && (v0 === v1);
       ew = v0 > v1 ? 0 : v1 > v0 ? 1 : state.mano;
     }
     const ep =
@@ -257,11 +355,30 @@ export function applyHandEnd(state, reason, foldedSeat) {
         : Number(h.envit.acceptedLevel || 0);
     const ewName = state.players?.[K(ew)]?.name || `J${ew}`;
     addScore(state, ew, ep);
+    // Usar prueba precomputada al aceptar el envit (mano completa).
+    // Fallback con mano residual para compatibilidad con partidas antiguas.
+    const preProof = h.envit.proof;
+    const visible = collectTableCards(h);
+    const proof =
+      preProof?.cards?.length > 0
+        ? preProof
+        : bestEnvitProof(fullHandForSeat(h, ew), visible);
+    const proofMeta =
+      proof.cards?.length > 0
+        ? {
+            envitProof: {
+              points: proof.points,
+              cards: proof.cards,
+              ...(envitPerMa ? { perMa: true } : {}),
+            },
+          }
+        : undefined;
     pushLog(
       state,
       isFold
         ? `Envit: guanya ${ewName} per abandó (+${ep}).`
         : `Envit: guanya ${ewName} (+${ep}).`,
+      proofMeta,
     );
     if (finish()) return;
   } else if (

@@ -42,6 +42,15 @@ PANTALLA 1 · LOBBY
         <h2 class="auth-subtitle">Juga gratis al truc original valencià!</h2>
       </div>
     </div>
+    <div class="auth-preview-wrap">
+      <img
+        class="auth-preview-img"
+        src="Media/Images/Others/imagen_portada.webp"
+        alt="Vista prèvia del tauler i la partida"
+        decoding="async"
+        fetchpriority="high"
+      />
+    </div>
     <div class="auth-actions">
       <p id="authErrMsg" class="auth-err-msg hidden" role="alert"></p>
       <div
@@ -77,25 +86,38 @@ PANTALLA 1 · LOBBY
         </button>.
       </p>
     </div>
+    <div
+      id="guestAuthBusy"
+      class="guest-auth-busy hidden"
+      aria-hidden="true"
+    >
+      <div class="guest-auth-busy-card" role="status" aria-live="polite">
+        <span class="guest-auth-spinner" aria-hidden="true"></span>
+        <p class="guest-auth-busy-msg">Entrant…</p>
+      </div>
+    </div>
   </div>
 
   <div id="pantalla-lobby" class="lobby-wrap lobby-hub hidden">
     <div id="user-profile" class="user-profile">
-      <div class="user-profile-left">
-        <img
-          id="user-profile-photo"
-          class="user-profile-photo"
-          alt=""
-          width="48"
-          height="48"
-          decoding="async"
-        />
-        <div class="user-profile-meta">
-          <span id="user-profile-name" class="user-profile-name">—</span>
-          <span class="user-profile-wins">Victòries: <strong id="user-wins-count">0</strong></span>
+      <p id="lobbyWelcomeLine" class="lobby-welcome-line" aria-live="polite"></p>
+      <div class="user-profile-inner">
+        <div class="user-profile-left">
+          <img
+            id="user-profile-photo"
+            class="user-profile-photo"
+            alt=""
+            width="48"
+            height="48"
+            decoding="async"
+          />
+          <div class="user-profile-meta">
+            <span id="user-profile-name" class="user-profile-name">—</span>
+            <span class="user-profile-wins">Victòries: <strong id="user-wins-count">0</strong></span>
+          </div>
         </div>
+        <button type="button" id="lobbyEixirBtn" class="lobby-eixir-btn hud-leave">Eixir</button>
       </div>
-      <button type="button" id="lobbyEixirBtn" class="lobby-eixir-btn hud-leave">Eixir</button>
     </div>
 
     <div class="lobby-hub-main">
@@ -109,6 +131,9 @@ PANTALLA 1 · LOBBY
     <div class="lobby-hub-footer">
       <button type="button" id="btn-crear-publica" class="lbtn lbtn-primary lobby-hub-btn">
         🌍 Crear sala pública
+      </button>
+      <button type="button" id="botBtn" class="lbtn lbtn-primary lobby-hub-btn">
+        🤖 Jugar contra bot
       </button>
       <div class="lobby-hub-footer-row">
         <button type="button" id="btn-crear-privada" class="lbtn lbtn-secondary lobby-hub-btn lobby-hub-btn-compact">
@@ -578,6 +603,7 @@ PANTALLA 2 · MESA DE JUEGO
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.2/dist/gsap.min.js"></script>
 <script type="module" src="game.js"></script>
 </body>

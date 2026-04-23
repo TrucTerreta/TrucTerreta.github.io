@@ -14,6 +14,7 @@ import { defaultState } from "./acciones.js";
 import * as Logica from "./logica.js";
 import { GUEST_LOBBY_AVATAR } from "./avatars.js";
 import { auth } from "./firebase.js";
+import { initBot, setBotActive } from "./bot.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -28,7 +29,7 @@ const sanitize = (s) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 8);
-const normName = (s) =>
+export const normName = (s) =>
   String(s || "")
     .trim()
     .slice(0, 24) || "Convidat";
@@ -50,9 +51,15 @@ function authPlayerExtras() {
   return o;
 }
 
-function pushLog(st, text) {
+function pushLog(st, text, meta) {
   st.logs = st.logs || [];
-  st.logs.unshift({ text, at: Date.now() });
+  const row = { text, at: Date.now() };
+  if (meta?.envitProof?.cards?.length)
+    row.envitProof = {
+      points: Number(meta.envitProof.points) || 0,
+      cards: meta.envitProof.cards.filter(Boolean),
+    };
+  st.logs.unshift(row);
   st.logs = st.logs.slice(0, 30);
 }
 
@@ -102,7 +109,7 @@ const ICO_USER =
 // --- Estat intern de sala -----------------------------------------------------
 let _pendingCreateVisibility = "public";
 let _pendingRoomSettings = DEFAULT_ROOM_SETTINGS();
-let _lastRoomListKey = "";
+let _lastRoomListKey = null;
 let unsubRooms = null;
 const ORPHAN_ROOM_MAX_MS = 2 * 60 * 1000;
 
@@ -122,6 +129,7 @@ function saveLS(n, c, s) {
 
 // --- Crear sala --------------------------------------------------------------
 export async function createRoom() {
+  setBotActive(false);
   const vis = _pendingCreateVisibility === "private" ? "private" : "public";
   const name = normName($("nameInput")?.value);
   const code =
@@ -165,14 +173,77 @@ export async function createRoom() {
   session.mySeat = 0;
   saveLS(name, code, 0);
   if ($("roomInput")) $("roomInput").value = code;
-  setLobbyMsg(`Sala ${code} creada.`, "good");
+  setLobbyMsg("", "");
   _pendingCreateVisibility = "public";
+  _startSession(code);
+  return true;
+}
+
+export async function createRoomAsBot(name) {
+  const vis = "private";
+  const botName = "🤖 Bot";
+  const humanName = normName(name);
+  const code =
+    sanitize($("roomInput")?.value) ||
+    Math.random().toString(36).slice(2, 6).toUpperCase();
+  const r = ref(db, `rooms/${code}`);
+  const ex = await get(r);
+
+  if (ex.exists()) {
+    const data = ex.val();
+    const lastActivity = data.lastActivity || 0;
+    const estado = data.state?.status;
+    const inactiva = Date.now() - lastActivity > 10 * 60 * 1000;
+    const finalizada = estado === "game_over";
+    const sinJugadores =
+      !data.state?.players?.[K(0)] || !data.state?.players?.[K(1)];
+    if (inactiva || finalizada || sinJugadores) {
+      await remove(r);
+    } else {
+      setLobbyMsg("Sala ja existeix.", "err");
+      return false;
+    }
+  }
+
+  const settings = { ..._pendingRoomSettings };
+  const init = defaultState();
+  init.roomCode = code;
+  init.settings = { ...settings };
+  init.players[K(0)] = {
+    name: humanName,
+    clientId: uid(),
+    ...authPlayerExtras(),
+  };
+  init.players[K(1)] = {
+    name: botName,
+    clientId: uid(),
+    guest: true,
+  };
+  init.ready = init.ready || {};
+  init.ready[K(1)] = true;
+  init.logs = [{ text: `Sala creada per ${humanName}.`, at: Date.now() }];
+
+  await set(r, {
+    meta: { createdAt: Date.now(), roomCode: code, visibility: vis },
+    settings,
+    state: init,
+    lastActivity: Date.now(),
+  });
+
+  session.mySeat = 0;
+  saveLS(humanName, code, 0);
+  if ($("roomInput")) $("roomInput").value = code;
+  setLobbyMsg("", "");
+  _pendingCreateVisibility = "public";
+  setBotActive(true);
+  await initBot();
   _startSession(code);
   return true;
 }
 
 // --- Unir-se a sala ----------------------------------------------------------
 export async function joinRoom() {
+  setBotActive(false);
   const name = normName($("nameInput")?.value);
   const code = sanitize($("roomInput")?.value);
   if (!code) {
@@ -297,36 +368,45 @@ export function loadRoomList() {
       body.className = "rl-card-body";
       const headLn = document.createElement("div");
       headLn.className = "rl-room-head";
-      headLn.append("Sala de ");
+      headLn.append("Sala creada per ");
       const nick = document.createElement("strong");
       nick.className = "rl-creator-nick";
       nick.textContent = r.host;
       headLn.appendChild(nick);
-      headLn.append(" · ");
-      const tagPts = document.createElement("span");
-      tagPts.className = "rl-tag";
-      tagPts.innerHTML = `${ICO_STONE}<span>${r.puntosParaGanar}p</span>`;
+      const modePts = document.createElement("div");
+      modePts.className = "rl-mode-pts-line";
       const tagMod = document.createElement("span");
       tagMod.className = "rl-tag";
       tagMod.innerHTML = `${ICO_USER}<span>${r.modoJuego}</span>`;
-      headLn.appendChild(tagPts);
-      headLn.appendChild(document.createTextNode(" "));
-      headLn.appendChild(tagMod);
+      const tagPts = document.createElement("span");
+      tagPts.className = "rl-tag";
+      tagPts.innerHTML = `${ICO_STONE}<span>${r.puntosParaGanar}p</span>`;
+      modePts.appendChild(tagMod);
+      modePts.appendChild(tagPts);
       const jg = document.createElement("div");
-      jg.className = "rl-meta-line";
-      jg.textContent = `Jugadors: ${r.nPlayers}/${r.maxCap}`;
-      const stEl = document.createElement("div");
-      stEl.className = "rl-meta-line rl-estado";
-      stEl.textContent = r.estado;
+      jg.className = "rl-meta-line rl-jugadors-estado";
+      const jgLbl = document.createElement("span");
+      jgLbl.className = "rl-jugadors-lbl";
+      jgLbl.textContent = `Jugadors: ${r.nPlayers}/${r.maxCap}`;
+      const jgDot = document.createElement("span");
+      jgDot.className = "rl-jugadors-sep";
+      jgDot.textContent = "\u00b7";
+      const stSpan = document.createElement("span");
+      stSpan.className = "rl-estado";
+      stSpan.textContent = r.estado;
+      jg.appendChild(jgLbl);
+      jg.appendChild(jgDot);
+      jg.appendChild(stSpan);
       body.appendChild(headLn);
+      body.appendChild(modePts);
       body.appendChild(jg);
-      body.appendChild(stEl);
       const join = document.createElement("button");
       join.type = "button";
       join.className = "lbtn lbtn-primary rl-join";
       join.textContent = "Entrar";
       const ple = r.nPlayers >= r.maxCap;
       if (ple) join.classList.add("rl-join-disabled");
+      else join.classList.add("rl-join-attention");
       join.style.opacity = ple ? "0.55" : "1";
       join.style.cursor = ple ? "not-allowed" : "pointer";
       join.title = ple ? "Sala completa" : "";

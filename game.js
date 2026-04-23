@@ -46,8 +46,19 @@ function updateLobbyProfileHeader(user) {
   const photoEl = document.getElementById("user-profile-photo");
   const winsEl = document.getElementById("user-wins-count");
   const nameInput = document.getElementById("nameInput");
+  const welcomeEl = document.getElementById("lobbyWelcomeLine");
 
   const name = lobbyDisplayName(user);
+  if (welcomeEl) {
+    welcomeEl.classList.remove("lobby-welcome-glow-play");
+    welcomeEl.textContent = name
+      ? `Benvingut al Truc de la Terreta, ${name}!`
+      : "";
+    if (name) {
+      void welcomeEl.offsetWidth;
+      welcomeEl.classList.add("lobby-welcome-glow-play");
+    }
+  }
   if (nameEl) nameEl.textContent = name;
   if (nameInput) nameInput.value = name;
 
@@ -115,6 +126,11 @@ function applySignedOutUi() {
   if (!pantallaInicio || !pantallaLobby) return;
   pantallaInicio.classList.remove("hidden");
   pantallaLobby.classList.add("hidden");
+  const welcomeEl = document.getElementById("lobbyWelcomeLine");
+  if (welcomeEl) {
+    welcomeEl.textContent = "";
+    welcomeEl.classList.remove("lobby-welcome-glow-play");
+  }
 }
 
 initApp();

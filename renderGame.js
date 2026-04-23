@@ -9,6 +9,10 @@ import {
   startOffer,
   respondEnvit,
   respondTruc,
+  playCardAsBot,
+  startOfferAsBot,
+  respondEnvitAsBot,
+  respondTrucAsBot,
   goMazo,
   claimWinByRivalAbsence,
 } from "./acciones.js";
@@ -18,6 +22,7 @@ import {
   playVersusIntro,
   playCenterTableMessage,
   animatePlay,
+  animateMyHandDealFromDeck,
   startTurnTimer,
   stopTurnTimer,
   playGameOverPresentation,
@@ -36,6 +41,7 @@ import {
 import { bumpStoredWinsIfWonGame } from "./auth.js";
 import { setLobbyMsg } from "./lobby.js";
 import { isVibrationEnabled } from "./config.js";
+import { isBotActive, botAct } from "./bot.js";
 
 // --- Helpers locales ----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -87,11 +93,16 @@ let _prevTrickKey = "";
 let _prevHandKey = "";
 let _lastCompletedTricks = null;
 let prevTurnKey = "";
-let _gameOverAnimScheduledFor = "";
+let _gameEndHandSummaryStartedFor = "";
+let _gameEndHandSummaryDoneFor = "";
+let _gameOverPresentationScheduledFor = "";
+let gameEndSummaryTimer = null;
+let _gameEndSummaryLatch = false;
 let _openingAnimPendingKey = "";
 let _openingAnimDoneKey = "";
 let _openingAnimRunning = false;
 let _lastIncomingOfferVibrationKey = "";
+let _botThinking = false;
 
 // Cuenta atrás entre manos
 let betweenTimer = null;
@@ -150,8 +161,31 @@ function buildBack() {
   return el;
 }
 
+/** Revers per al repartiment inicial: mateixa mida que la cara (`.card-back-hand` al CSS). */
+function buildHandDealBack() {
+  const el = buildBack();
+  el.classList.add("card-back-hand");
+  return el;
+}
+
+function bindMyCardPlayable(wrap, cel, card, myCardsZone) {
+  wrap.classList.add("playable");
+  wrap.addEventListener(
+    "click",
+    () => {
+      if (ui.locked || !wrap.classList.contains("playable")) return;
+      myCardsZone.querySelectorAll(".my-card-wrap").forEach((w) =>
+        w.classList.remove("playable"),
+      );
+      sndCard();
+      animatePlay(cel, buildCard(card), () => playCard(card));
+    },
+    { once: true },
+  );
+}
+
 // --- Mensajes de mesa ---------------------------------------------------------
-function showTableMsgLocal(text, isMine = true) {
+export function showTableMsgLocal(text, isMine = true) {
   const cleaned = String(text || "").trim();
   if (!cleaned) return;
   const bubble = document.createElement("div");
@@ -174,6 +208,21 @@ export function showTableMsg(text, isMine = true) {
   }
 }
 
+function envitProofInnerHtml(proof) {
+  if (!proof?.cards?.length) return "";
+  const bits = proof.cards.map((card) => {
+    const { num, suit } = Logica.parseCard(card);
+    const suitLetter =
+      { oros: "o", copas: "c", espadas: "e", bastos: "b" }[suit] || "";
+    const imgCode = `${num}${suitLetter}`;
+    const cls = SUITS[suit]?.cls || "";
+    const src = `./Media/Images/Cards/${imgCode}.jpg`;
+    return `<div class="playing-card ${cls} use-img playing-card--log-mini"><img class="card-art" src="${src}" alt="" draggable="false"></div>`;
+  });
+  const perMaSuffix = proof.perMa ? " (per m\u00e0)" : "";
+  return `<div class="sum-envit-proof">${bits.join("")}<span class="sum-envit-pts">${proof.points} punts${perMaSuffix}</span></div>`;
+}
+
 function offerCallText(offerKind, offerLevel) {
   if (offerKind === "envit") {
     if (offerLevel === "falta") return "Falta!!!";
@@ -189,6 +238,21 @@ function offerCallText(offerKind, offerLevel) {
 }
 
 // --- Resumen de puntos entre manos --------------------------------------------
+
+/** Detecta si en la mano actual se aceptó un envit (hay prueba de cartas en el log). */
+function handSummaryHasEnvit(state) {
+  const logs = state.logs || [];
+  let marcCount = 0;
+  for (const l of logs) {
+    if (l.text?.startsWith("Marcador:")) {
+      marcCount++;
+      if (marcCount >= 2) break;
+    }
+    if (l.envitProof?.cards?.length > 0) return true;
+  }
+  return false;
+}
+
 function buildScoreSummary(state) {
   const logs = state.logs || [];
   const p0 = pName(state, 0),
@@ -230,7 +294,16 @@ function buildScoreSummary(state) {
       (txt.includes("guanya") || txt.includes("acceptat"))
     ) {
       winner = guessWinner();
-      label = `Envit guanyat per <b>${winner}</b>`;
+      const proofHtml = l.envitProof ? envitProofInnerHtml(l.envitProof) : "";
+      label = `<span>Envit guanyat per <b>${winner}</b></span>${proofHtml}`;
+      if (proofHtml) {
+        rows.push(
+          `<div class="sum-row sum-row--has-proof"><span class="sum-label">${label}</span><span class="sum-pts">+${pts}</span></div>`,
+        );
+        if (winner === p0) pts0 += pts;
+        else pts1 += pts;
+        continue;
+      }
     } else if (txt.includes("Envit") && txt.includes("rebutjat")) {
       winner = guessWinner();
       label = `No vull l'envit - +${pts} per <b>${winner}</b>`;
@@ -283,7 +356,42 @@ function stopBetween() {
   $("countdownOverlay").classList.add("hidden");
 }
 
-function startBetween(summaryHtml) {
+function stopGameEndSummary() {
+  if (gameEndSummaryTimer != null) {
+    clearTimeout(gameEndSummaryTimer);
+    gameEndSummaryTimer = null;
+    // Solo ocultamos el overlay si el timer de fin de partida estaba activo;
+    // si hay un betweenTimer corriendo sobre el mismo overlay, no lo tocamos.
+    $("countdownOverlay")?.classList.add("hidden");
+  }
+}
+
+/** 4 s de resum de la mà (5 s si hi havia envit); després pantalla guanyador/perdedor. */
+function startGameEndHandSummary(state, animKey) {
+  stopGameEndSummary();
+  const ov = $("countdownOverlay"),
+    lbl = $("countdownLabel");
+  if (lbl) lbl.innerHTML = buildScoreSummary(state);
+  ov.classList.remove("hidden");
+  const cdEl = $("tableCdEl");
+  if (cdEl) {
+    cdEl.classList.add("hidden");
+    cdEl.innerHTML = "";
+  }
+  const duration = 4000 + (handSummaryHasEnvit(state) ? 1000 : 0);
+  gameEndSummaryTimer = setTimeout(() => {
+    stopGameEndSummary();
+    _gameEndSummaryLatch = true;
+    if (cdEl) {
+      cdEl.classList.add("hidden");
+      cdEl.innerHTML = "";
+    }
+    _gameEndHandSummaryDoneFor = animKey;
+    if (_lastRoom) renderAll(_lastRoom);
+  }, duration);
+}
+
+function startBetween(summaryHtml, extraDelay = 0) {
   stopBetween();
   const ov = $("countdownOverlay"),
     lbl = $("countdownLabel");
@@ -316,7 +424,7 @@ function startBetween(summaryHtml) {
     n--;
     betweenTimer = setTimeout(tick, 1000);
   }
-  betweenTimer = setTimeout(() => tick(), 3000);
+  betweenTimer = setTimeout(() => tick(), 3000 + extraDelay);
 }
 
 // --- Cartas del rival (preparado para N jugadores) ---------------------------
@@ -404,75 +512,88 @@ function renderMyCards(state) {
   _prevHandsKey = handsKey;
   z.replaceChildren();
 
+  const handDealIntro =
+    !!globalThis.gsap &&
+    emptyBefore &&
+    myCards.length === 3 &&
+    !_introPlayed;
+
   myCards.forEach((card) => {
     const wrap = document.createElement("div");
     wrap.className = "my-card-wrap";
-    const cel = buildCard(card);
-    wrap.appendChild(cel);
-    if (canPlay) {
-      wrap.classList.add("playable");
-      wrap.addEventListener(
-        "click",
-        () => {
-          if (ui.locked || !wrap.classList.contains("playable")) return;
-          z.querySelectorAll(".my-card-wrap").forEach((w) =>
-            w.classList.remove("playable"),
-          );
-          sndCard();
-          animatePlay(cel, buildCard(card), () => playCard(card));
-        },
-        { once: true },
-      );
+    if (handDealIntro) {
+      wrap.style.opacity = "0";
+      // Evita que el `transition: transform` del CSS interpole entre l'abanic i el set de GSAP (efecte centre→mazo→mà).
+      wrap.style.transition = "none";
+      wrap.appendChild(buildHandDealBack());
+    } else {
+      const cel = buildCard(card);
+      wrap.appendChild(cel);
+      if (canPlay) bindMyCardPlayable(wrap, cel, card, z);
     }
     z.appendChild(wrap);
   });
 
-  const gsap = globalThis.gsap;
-  if (
-    gsap &&
-    emptyBefore &&
-    myCards.length === 3 &&
-    !_introPlayed &&
-    z.querySelectorAll(".my-card-wrap").length === 3
-  ) {
+  if (handDealIntro && z.querySelectorAll(".my-card-wrap").length === 3) {
     _introPlayed = true;
-    const deckPile = $("deckPile");
-    const wraps = z.querySelectorAll(".my-card-wrap");
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!deckPile || !globalThis.gsap) return;
+    void z.offsetHeight;
+    animateMyHandDealFromDeck(z.querySelectorAll(".my-card-wrap"), {
+      flipAllSubtimeline(allWraps) {
         const g = globalThis.gsap;
-        const deckRect = deckPile.getBoundingClientRect();
-        const deckOnLeft = deckRect.left < window.innerWidth / 2;
-        const gcx = deckOnLeft
-          ? deckRect.left + deckRect.width
-          : deckRect.left;
-        const gcy = deckRect.top + deckRect.height / 2;
-        g.fromTo(
-          wraps,
-          {
-            x: (_i, el) => {
-              const r = el.getBoundingClientRect();
-              return gcx - (r.left + r.width / 2);
-            },
-            y: (_i, el) => {
-              const r = el.getBoundingClientRect();
-              return gcy - (r.top + r.height / 2);
-            },
-            rotation: () => Math.random() * 30 - 15,
-            transformOrigin: "50% 50%",
-          },
-          {
-            x: 0,
-            y: 0,
-            rotation: 0,
-            duration: 0.55,
+        if (!g || allWraps.length !== 3) return null;
+        const backs = allWraps
+          .map((w) => w.querySelector(".card-back-hand"))
+          .filter(Boolean);
+        if (backs.length !== 3) return null;
+        const sub = g.timeline();
+        sub.to(backs, {
+          scaleX: 0,
+          duration: 0.1,
+          ease: "power2.in",
+          transformOrigin: "50% 50%",
+        });
+        // El flip de cares ha d'afegir-se amb `sub.to` després del pas de
+        // `call` (no des de `onComplete` del tween dels reversos): si no, el
+        // subtimeline acaba massa prompte, el timeline pare fa `onComplete` i
+        // les cares queden amb scaleX: 0 fins a un render posterior.
+        sub.call(function () {
+          const faces = [];
+          allWraps.forEach((w, idx) => {
+            const face = buildCard(myCards[idx]);
+            face.style.transition = "none";
+            g.set(face, { scaleX: 0, transformOrigin: "50% 50%" });
+            w.replaceChildren(face);
+            faces.push(face);
+          });
+          sub.to(faces, {
+            scaleX: 1,
+            duration: 0.12,
             ease: "power2.out",
-            stagger: 0.15,
-            clearProps: "transform",
-          },
-        );
-      });
+            onComplete: () => {
+              allWraps.forEach((w, idx) => {
+                const face = w.querySelector(".playing-card");
+                if (!face) return;
+                face.style.removeProperty("transition");
+                g.set(face, { clearProps: "scaleX,transformOrigin" });
+                if (canPlay)
+                  bindMyCardPlayable(w, face, myCards[idx], z);
+              });
+            },
+          });
+        });
+        return sub;
+      },
+      onDealAborted(wraps) {
+        wraps.forEach((w, idx) => {
+          const c = myCards[idx];
+          if (!w || !c) return;
+          if (w.querySelector(".card-back-hand")) {
+            w.replaceChildren(buildCard(c));
+          }
+          const face = w.querySelector(".playing-card");
+          if (canPlay && face) bindMyCardPlayable(w, face, c, z);
+        });
+      },
     });
   }
 }
@@ -565,7 +686,13 @@ function renderTrick(state) {
   const info = $("centerInfo");
 
   if (!h) {
-    if (_lastCompletedTricks && (betweenTimer != null || _betweenCountdownLatch)) {
+    if (
+      _lastCompletedTricks &&
+      (betweenTimer != null ||
+        _betweenCountdownLatch ||
+        gameEndSummaryTimer != null ||
+        _gameEndSummaryLatch)
+    ) {
       return;
     }
     const grid = $("trickGrid");
@@ -827,6 +954,21 @@ function renderActions(state) {
   }
 }
 
+async function executeBotAction(action, state) {
+  const [type, payload] = action;
+  if (type === "PLAY_CARD") {
+    const cards = fromHObj(state.hand.hands[K(1)]);
+    const card = cards[payload];
+    if (card) await playCardAsBot(card);
+  } else if (type === "OFFER") {
+    await startOfferAsBot(payload);
+  } else if (type === "RESPOND_ENVIT") {
+    await respondEnvitAsBot(payload);
+  } else if (type === "RESPOND_TRUC") {
+    await respondTrucAsBot(payload);
+  }
+}
+
 // --- Timer de turno del rival ------------------------------------------------
 function updateRivalTimer(state) {
   const h = state.hand;
@@ -872,10 +1014,29 @@ function renderLog(state) {
   const p0 = pName(state, 0), p1 = pName(state, 1);
   const frag = document.createDocumentFragment();
   (state.logs || []).slice(0, 15).forEach((item) => {
-    const d = document.createElement("div");
-    d.className = "log-entry";
-    d.textContent = (item.text || "").replace(/\bJ0\b/g, p0).replace(/\bJ1\b/g, p1);
-    frag.appendChild(d);
+    const wrap = document.createElement("div");
+    wrap.className = "log-entry";
+    const line = document.createElement("div");
+    line.className = "log-entry-line";
+    line.textContent = (item.text || "")
+      .replace(/\bJ0\b/g, p0)
+      .replace(/\bJ1\b/g, p1);
+    wrap.appendChild(line);
+    if (item.envitProof?.cards?.length) {
+      const row = document.createElement("div");
+      row.className = "log-envit-proof-row";
+      for (const cid of item.envitProof.cards) {
+        const mini = buildCard(cid);
+        mini.classList.add("playing-card--log-mini");
+        row.appendChild(mini);
+      }
+      const pts = document.createElement("span");
+      pts.className = "log-envit-proof-pts";
+      pts.textContent = `${item.envitProof.points} punts`;
+      row.appendChild(pts);
+      wrap.appendChild(row);
+    }
+    frag.appendChild(wrap);
   });
   a.replaceChildren(frag);
 }
@@ -1094,12 +1255,26 @@ export function renderAll(room) {
         ),
       )
       .catch(() => {})
-      .then(() => playCenterTableMessage("Bona sort!"))
+      .then(() => {
+        const afterMsg = playCenterTableMessage("Bona sort!");
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              _openingAnimDoneKey = openingAnimKey;
+              _openingAnimRunning = false;
+              if (_lastRoom) renderAll(_lastRoom);
+            }, 500);
+          }),
+        );
+        return afterMsg;
+      })
       .catch(() => {})
       .finally(() => {
-        _openingAnimDoneKey = openingAnimKey;
-        _openingAnimRunning = false;
-        if (_lastRoom) renderAll(_lastRoom);
+        if (_openingAnimDoneKey !== openingAnimKey) {
+          _openingAnimDoneKey = openingAnimKey;
+          _openingAnimRunning = false;
+          if (_lastRoom) renderAll(_lastRoom);
+        }
       });
   }
 
@@ -1165,29 +1340,51 @@ export function renderAll(room) {
     $("waitingOverlay").classList.add("hidden");
     const wasHidden = $("gameOverOverlay").classList.contains("hidden");
     const animKey = `${session.roomCode}|${state.winner}|${getScore(state, session.mySeat)}-${getScore(state, other(session.mySeat))}|${state.logs?.[0]?.at ?? ""}|${state.gameEndReason || ""}`;
-    if (wasHidden && animKey !== _gameOverAnimScheduledFor) {
-      _gameOverAnimScheduledFor = animKey;
-      const iWon = state.winner === session.mySeat;
-      setTimeout(() => {
-        $("gameOverOverlay").classList.remove("hidden");
-        $("goTitle").textContent = iWon ? "\ud83c\udfc6 Has guanyat!" : "\ud83d\ude05 Has perdut";
-        $("goWinner").textContent = pName(state, state.winner) + " guanya";
-        const abandonment = state.gameEndReason === "abandonment";
-        $("goScore").textContent =
-          abandonment && iWon
-            ? "Has guanyat per abandonament!"
-            : abandonment && !iWon
-              ? "Has perdut per abandonament (temps de reconnexi\u00f3 esgotat)."
-              : `${getScore(state, session.mySeat)} - ${getScore(state, other(session.mySeat))}`;
-        if (iWon) {
-          sndWin();
-          vibratePattern(500);
-          bumpStoredWinsIfWonGame();
-        } else {
-          sndLose();
+    const abandonment = state.gameEndReason === "abandonment";
+    const showGameOverOverlay = () => {
+      const st = _lastState;
+      if (!st || st.status !== "game_over") return;
+      _gameEndSummaryLatch = false;
+      const iWon = st.winner === session.mySeat;
+      const aband = st.gameEndReason === "abandonment";
+      $("gameOverOverlay").classList.remove("hidden");
+      $("goTitle").textContent = iWon ? "\ud83c\udfc6 Has guanyat!" : "\ud83d\ude05 Has perdut";
+      $("goWinner").textContent = pName(st, st.winner) + " guanya";
+      $("goScore").textContent =
+        aband && iWon
+          ? "Has guanyat per abandonament!"
+          : aband && !iWon
+            ? "Has perdut per abandonament (temps de reconnexi\u00f3 esgotat)."
+            : `${getScore(st, session.mySeat)} - ${getScore(st, other(session.mySeat))}`;
+      if (iWon) {
+        sndWin();
+        vibratePattern(500);
+        bumpStoredWinsIfWonGame();
+      } else {
+        sndLose();
+      }
+      playGameOverPresentation(iWon);
+    };
+    if (wasHidden) {
+      if (abandonment) {
+        stopGameEndSummary();
+        if (_gameOverPresentationScheduledFor !== animKey) {
+          _gameOverPresentationScheduledFor = animKey;
+          setTimeout(showGameOverOverlay, 3000);
         }
-        playGameOverPresentation(iWon);
-      }, 3000);
+      } else {
+        if (_gameEndHandSummaryStartedFor !== animKey) {
+          _gameEndHandSummaryStartedFor = animKey;
+          startGameEndHandSummary(state, animKey);
+        }
+        if (
+          _gameEndHandSummaryDoneFor === animKey &&
+          _gameOverPresentationScheduledFor !== animKey
+        ) {
+          _gameOverPresentationScheduledFor = animKey;
+          setTimeout(showGameOverOverlay, 0);
+        }
+      }
     }
     renderRematchStatus(state);
   } else {
@@ -1195,7 +1392,11 @@ export function renderAll(room) {
       $("gameOverOverlay").classList.add("hidden");
       stopConfetti();
     }
-    _gameOverAnimScheduledFor = "";
+    stopGameEndSummary();
+    _gameEndHandSummaryStartedFor = "";
+    _gameEndHandSummaryDoneFor = "";
+    _gameOverPresentationScheduledFor = "";
+    _gameEndSummaryLatch = false;
   }
 
   if (state.status === "waiting") {
@@ -1253,7 +1454,7 @@ export function renderAll(room) {
     } else {
       $("waitingOverlay").classList.add("hidden");
       if (bothJoined && betweenTimer === null && !_betweenCountdownLatch)
-        startBetween(buildScoreSummary(state));
+        startBetween(buildScoreSummary(state), handSummaryHasEnvit(state) ? 1000 : 0);
     }
     _prevStatus = state.status;
     return;
@@ -1276,4 +1477,22 @@ export function renderAll(room) {
     }
   }
   _prevStatus = state.status;
+  if (isBotActive() && !_botThinking) {
+    const st = room?.state;
+    if (
+      st?.status === "playing" &&
+      st?.hand?.status === "in_progress" &&
+      st?.hand?.turn === 1
+    ) {
+      _botThinking = true;
+      setTimeout(async () => {
+        try {
+          const action = await botAct(st);
+          if (action) await executeBotAction(action, st);
+        } finally {
+          _botThinking = false;
+        }
+      }, 600);
+    }
+  }
 }
