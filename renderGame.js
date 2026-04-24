@@ -21,6 +21,7 @@ import {
   animateHUDPoints,
   playVersusIntro,
   playCenterTableMessage,
+  animateRivalActionTableMsg,
   animatePlay,
   animateMyHandDealFromDeck,
   startTurnTimer,
@@ -28,7 +29,7 @@ import {
   playGameOverPresentation,
   stopConfetti,
 } from "./animations.js";
-import { syncOfferBubblesFromState } from "./chat.js";
+import { syncOfferBubblesFromState, showBubble } from "./chat.js";
 import {
   AVATAR_IMAGES,
   myAvatarChoice,
@@ -398,7 +399,8 @@ function startBetween(summaryHtml, extraDelay = 0) {
     lbl = $("countdownLabel");
   if (lbl && summaryHtml) lbl.innerHTML = summaryHtml;
   ov.classList.remove("hidden");
-  let n = 5;
+  const cdSeconds = isBotActive() ? 3 : 5;
+  let n = cdSeconds;
   let cdEl = $("tableCdEl");
   if (!cdEl) {
     cdEl = document.createElement("div");
@@ -421,7 +423,7 @@ function startBetween(summaryHtml, extraDelay = 0) {
     }
     cdEl.classList.remove("hidden");
     cdEl.innerHTML = `<div class="cd-subtitle">Següent mà en\u2026</div><div class="cd-number">${n}</div>`;
-    if (n < 5) sndTick();
+    if (n < cdSeconds) sndTick();
     n--;
     betweenTimer = setTimeout(tick, 1000);
   }
@@ -955,18 +957,62 @@ function renderActions(state) {
   }
 }
 
-async function executeBotAction(action, state) {
+function botActionFlyCaption(action, state) {
   const [type, payload] = action;
+  const h = state?.hand;
+  const botSeat = 1;
+  if (type === "OFFER") {
+    if (payload === "envit") return offerCallText("envit", 2);
+    if (payload === "falta") return offerCallText("envit", "falta");
+    if (payload === "truc") {
+      let trucLevel = 2;
+      if (h?.truc?.state === "accepted" && h.truc.responder === botSeat) {
+        trucLevel = Number(h.truc.acceptedLevel || 2) + 1;
+        if (trucLevel > 4) trucLevel = 4;
+      }
+      return offerCallText("truc", trucLevel);
+    }
+  }
+  if (type === "RESPOND_ENVIT") {
+    if (payload === "vull") return "Vull";
+    if (payload === "no_vull") return "No vull";
+    if (payload === "torne") return offerCallText("envit", 4);
+    if (payload === "falta") return offerCallText("envit", "falta");
+  }
+  if (type === "RESPOND_TRUC") {
+    if (payload === "vull") return "Vull";
+    if (payload === "no_vull") return "No vull";
+    if (payload === "retruque") return offerCallText("truc", 3);
+    if (payload === "val4") return offerCallText("truc", 4);
+  }
+  return "";
+}
+
+async function executeBotAction(action, state) {
+  const [type] = action;
   if (type === "PLAY_CARD") {
     const cards = fromHObj(state.hand.hands[K(1)]);
-    const card = cards[payload];
+    const card = cards[action[1]];
     if (card) await playCardAsBot(card);
-  } else if (type === "OFFER") {
-    await startOfferAsBot(payload);
+    return;
+  }
+  const caption = botActionFlyCaption(action, state);
+  if (caption) {
+    void animateRivalActionTableMsg(caption);
+    if (
+      type === "OFFER" ||
+      type === "RESPOND_ENVIT" ||
+      type === "RESPOND_TRUC"
+    ) {
+      showBubble("rivalBubble", caption);
+    }
+  }
+  if (type === "OFFER") {
+    await startOfferAsBot(action[1]);
   } else if (type === "RESPOND_ENVIT") {
-    await respondEnvitAsBot(payload);
+    await respondEnvitAsBot(action[1]);
   } else if (type === "RESPOND_TRUC") {
-    await respondTrucAsBot(payload);
+    await respondTrucAsBot(action[1]);
   }
 }
 
@@ -981,50 +1027,66 @@ function getBotActDelayMs() {
   );
 }
 
+function canBotActInState(state, botSeat) {
+  const h = state?.hand;
+  if (
+    state?.status !== "playing" ||
+    h?.status !== "in_progress" ||
+    h.turn !== botSeat
+  ) {
+    return false;
+  }
+  if (h.pendingOffer) {
+    return (
+      h.pendingOffer.to === botSeat &&
+      ((h.pendingOffer.kind === "envit" && h.mode === "respond_envit") ||
+        (h.pendingOffer.kind === "truc" && h.mode === "respond_truc"))
+    );
+  }
+  return h.mode === "normal" && !alreadyPlayed(h, botSeat);
+}
+
 function scheduleBotIfNeededFromGameState(state) {
   if (!isBotActive() || _botThinking) return;
   if (session.mySeat !== 0 && session.mySeat !== 1) return;
   const botSeat = other(session.mySeat);
-  if (
-    state?.status !== "playing" ||
-    state?.hand?.status !== "in_progress" ||
-    state?.hand?.turn !== botSeat
-  )
-    return;
+  if (!canBotActInState(state, botSeat)) return;
 
   _botThinking = true;
   const botDelayMs = getBotActDelayMs();
   setTimeout(() => {
+    let didRunAction = false;
     let st = _lastRoom?.state;
-    if (
-      !st?.hand ||
-      st.status !== "playing" ||
-      st.hand.status !== "in_progress" ||
-      st.hand.turn !== botSeat
-    ) {
+    if (!canBotActInState(st, botSeat)) {
       _botThinking = false;
       return;
     }
     botAct(st)
       .then(async (action) => {
         if (action) {
+          didRunAction = true;
           await executeBotAction(action, st);
           return;
         }
         st = _lastRoom?.state;
-        if (
-          !st?.hand ||
-          st.hand.turn !== botSeat ||
-          st.status !== "playing" ||
-          st.hand.status !== "in_progress"
-        )
-          return;
+        if (!canBotActInState(st, botSeat)) return;
         const action2 = await botAct(st);
-        if (action2) await executeBotAction(action2, st);
+        if (action2) {
+          didRunAction = true;
+          await executeBotAction(action2, st);
+        }
       })
       .catch((e) => console.error("bot error:", e))
       .finally(() => {
         _botThinking = false;
+        if (!didRunAction) return;
+        if (!session.roomRef) return;
+        get(session.roomRef)
+          .then((snap) => {
+            const room = snap.val();
+            if (room) renderAll(room);
+          })
+          .catch(() => {});
       });
   }, botDelayMs);
 }
@@ -1322,6 +1384,9 @@ export function renderAll(room) {
       )
       .catch(() => {})
       .then(() => {
+        if (isBotActive() && _lastRoom?.state) {
+          scheduleBotIfNeededFromGameState(_lastRoom.state);
+        }
         const afterMsg = playCenterTableMessage("Bona sort!");
         requestAnimationFrame(() =>
           requestAnimationFrame(() => {
@@ -1386,8 +1451,7 @@ export function renderAll(room) {
         );
       }
     }
-    // El return anticipat saltava la programació del bot (truc/retruc durant la intro).
-    scheduleBotIfNeededFromGameState(state);
+    // Durant l'overlay VS: sense render complet ni programació del bot (això va al .then de playVersusIntro).
     return;
   }
 
@@ -1486,6 +1550,7 @@ export function renderAll(room) {
       _betweenCountdownLatch = false;
       stopBetween();
       $("waitingCode").textContent = session.roomCode || "-";
+      $("waitingInviteWhatsappBtn")?.classList.toggle("hidden", isBotActive());
       $("waitingCodeRow")?.classList.toggle(
         "hidden",
         session.roomVisibility === "public",

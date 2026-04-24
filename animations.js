@@ -218,6 +218,90 @@ export function playVersusIntro(myName, rivalName, mineSrc, rivalSrc) {
   });
 }
 
+/** Text daurat des de les cartes del rival cap al centre (trickGrid). No bloqueja el torn. */
+export function animateRivalActionTableMsg(text) {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) return Promise.resolve();
+
+  const src = document.getElementById("rivalCards");
+  const target = document.getElementById("trickGrid");
+  const fr = src?.getBoundingClientRect();
+  const tRect = target?.getBoundingClientRect();
+  const x0 = fr?.width ? fr.left + fr.width / 2 : window.innerWidth * 0.5;
+  const y0 = fr?.height ? fr.top + fr.height / 2 : window.innerHeight * 0.22;
+  const x1 = tRect?.width
+    ? tRect.left + tRect.width / 2
+    : window.innerWidth * 0.5;
+  const y1 = tRect?.height
+    ? tRect.top + tRect.height / 2
+    : window.innerHeight * 0.42;
+
+  const bubble = document.createElement("div");
+  bubble.className = "table-msg-bubble";
+  bubble.textContent = cleaned;
+  bubble.style.position = "fixed";
+  bubble.style.left = `${x0}px`;
+  bubble.style.top = `${y0}px`;
+  bubble.style.width = "max-content";
+  bubble.style.maxWidth = "min(90vw, 22rem)";
+  bubble.style.textAlign = "center";
+  bubble.style.zIndex = "1000";
+  bubble.style.pointerEvents = "none";
+  document.body.appendChild(bubble);
+
+  const g = globalThis.gsap;
+  if (!g) {
+    bubble.classList.add("msg-rival");
+    bubble.style.left = "50%";
+    bubble.style.top = "28%";
+    bubble.style.animation = "bubblePop 1.8s ease-out forwards";
+    return new Promise((resolve) => {
+      const done = () => {
+        bubble.remove();
+        resolve();
+      };
+      bubble.addEventListener("animationend", done, { once: true });
+      setTimeout(done, 2000);
+    });
+  }
+
+  return new Promise((resolve) => {
+    g.killTweensOf(bubble);
+    g.set(bubble, {
+      xPercent: -50,
+      yPercent: -50,
+      x: 0,
+      y: 0,
+      scale: 0.45,
+      opacity: 0,
+    });
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const tl = g.timeline({
+      onComplete: () => {
+        bubble.remove();
+        resolve();
+      },
+    });
+    tl.to(
+      bubble,
+      { opacity: 1, scale: 1.18, duration: 0.2, ease: "power2.out" },
+      0,
+    );
+    tl.to(bubble, { x: dx, y: dy, duration: 0.68, ease: "power2.inOut" }, 0);
+    tl.to(
+      bubble,
+      { scale: 1, duration: 0.22, ease: "power1.out" },
+      0.18,
+    );
+    tl.to(
+      bubble,
+      { opacity: 0, scale: 1.06, duration: 0.32, ease: "power2.in" },
+      0.62,
+    );
+  });
+}
+
 export function playCenterTableMessage(text, durationMs = 1400) {
   const msg = document.createElement("div");
   msg.className = "table-msg-bubble msg-center start-hand-msg";

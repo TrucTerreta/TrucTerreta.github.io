@@ -122,6 +122,9 @@ const _mem = {
 
   // Modo venganza activo
   venganzaActive: 0,
+  
+  // Faroles pillados al bot
+  botFarolPillado: 0,
 };
 
 // Modificadores finales calculados por updateMemory()
@@ -133,6 +136,7 @@ let _mod = {
   tiltBonus: 0,          // % extra agresividad por tilt
   venganzaBonus: 0,      // % extra retruc por venganza
   envitThresholdMod: 0,  // reducción umbral envit por tilt (-2 pts)
+  malusTruc: 0,          // % penalización a farolear truc si nos han pillado
 };
 
 export function resetBotMemory() {
@@ -143,11 +147,12 @@ export function resetBotMemory() {
     humanEnvitHistory: [], humanRetiradas: 0,
     humanTorneCount: 0, botTorneWins: 0, humanFaltaCount: 0,
     botLostStreak: 0, lastHandWinner: null, venganzaActive: 0,
+    botFarolPillado: 0,
   });
   Object.assign(_mod, {
     bonusQuerer: 0, bonusNoVull: 0, bonusEnvidar: 0,
     malusTrucAccept: 0, tiltBonus: 0, venganzaBonus: 0,
-    envitThresholdMod: 0,
+    envitThresholdMod: 0, malusTruc: 0,
   });
 }
 
@@ -220,6 +225,16 @@ export function updateBotMemory(lastHandSummary, humanSeat, scores) {
     _mem.humanFaltaCount = Math.max(0, (_mem.humanFaltaCount || 0) - 1);
   }
 
+  // ── Bot Farol Descubierto ──────────────────────────────────
+  if (botWon === false && truc.state !== 'none' && truc.caller === BOT_SEAT) {
+    const bmp = maxPower(fromHObj(hands?.[K(BOT_SEAT)]));
+    if (bmp <= 7) {
+      _mem.botFarolPillado = Math.min((_mem.botFarolPillado || 0) + 1, 3);
+    }
+  } else {
+    _mem.botFarolPillado = Math.max(0, (_mem.botFarolPillado || 0) - 0.5);
+  }
+
   // ── Recalcular modificadores ──────────────────────────────
   _mod.bonusQuerer = _mem.humanFarolero > 0 ? 20 : 0;
   _mod.bonusNoVull = _mem.humanConservador > 0 ? 30 : 0;
@@ -228,6 +243,7 @@ export function updateBotMemory(lastHandSummary, humanSeat, scores) {
   _mod.tiltBonus = _mem.tilt ? 20 : 0;
   _mod.venganzaBonus = _mem.venganzaActive > 0 ? 20 : 0;
   _mod.envitThresholdMod = _mem.tilt ? -2 : 0;
+  _mod.malusTruc = Math.floor((_mem.botFarolPillado || 0) * 15);
 }
 
 // ── MOTOR DE ENVIT ────────────────────────────────────────────
@@ -246,7 +262,10 @@ function envitProb(pts, humanIsManoPassed) {
   return base;
 }
 
-function acceptEnvitProb(pts) {
+function acceptEnvitProb(pts, humanScore) {
+  if (humanScore >= 11) return 100;
+  // Si rival está a 2 puntos y ya rechazó envit (solo le faltará 1):
+  // esto lo gestiona el marcador real, no hace falta caso especial.
   let base;
   if (pts <= 4)       base = 0;
   else if (pts <= 7)  base = 3;
@@ -313,7 +332,8 @@ function trucProbManoFirst(myCards, humanScore, botScore) {
   return 0;
 }
 
-function trucProbPostreFirst(rivalCard) {
+function trucProbPostreFirst(rivalCard, humanScore) {
+  if (humanScore >= 11) return 90;
   const rp = power(rivalCard);
   if (rp <= 3)  return 20;
   if (rp <= 5)  return 15;
@@ -324,6 +344,7 @@ function trucProbPostreFirst(rivalCard) {
 }
 
 function trucProbSecondBaza(myCards, won1st, draw1st, humanScore, botScore) {
+  if (humanScore >= 11) return 90;
   const mp = maxPower(myCards);
   if (won1st) {
     if (myCards.includes('1_espadas')) return 25; // hacerse el débil
@@ -340,11 +361,12 @@ function trucProbSecondBaza(myCards, won1st, draw1st, humanScore, botScore) {
   }
   // Perdió 1ª baza
   if (mp >= 11) return 70;
-  if (mp <= 4)  return 10; // farol desesperación
+  if (mp <= 4)  return Math.max(0, 10 - (_mod.malusTruc || 0)); // farol desesperación
   return 0;
 }
 
-function retruqueProb(myCards, trucLevel) {
+function retruqueProb(myCards, trucLevel, humanScore) {
+  if (humanScore >= 11) return 100;
   const mp = maxPower(myCards);
   // ¿Tiene la mejor carta posible restante?
   const hasBest = myCards.includes('1_espadas') || myCards.includes('1_bastos');
@@ -365,7 +387,8 @@ function retruqueProb(myCards, trucLevel) {
   return Math.min(100, base);
 }
 
-function acceptTrucProb(myCards, trucLevel) {
+function acceptTrucProb(myCards, trucLevel, humanScore) {
+  if (humanScore >= 11) return 100;
   const mp = maxPower(myCards);
   const hasBest = myCards.includes('1_espadas') || myCards.includes('1_bastos');
   if (hasBest) return 100;
@@ -414,7 +437,14 @@ function chooseCardToPlay(myCards, rivalCard, isMano) {
     ['1_espadas','1_bastos','7_espadas'].includes(c));
 
   if (mp >= 11) {
-    // Mano fuerte: tirar carta mala el 80%
+    // Arrastre: Si tiene especiales y otra alta, ocasionalmente tirar la menor de las altas para reservar el as
+    if (hasSpecial && highCards.length >= 2 && roll(35)) {
+      const notBest = highCards.filter(x => x.c !== '1_espadas' && x.c !== '1_bastos');
+      if (notBest.length) {
+        return notBest.sort((a,b) => a.p - b.p)[0].i;
+      }
+    }
+    // Mano fuerte: tirar carta mala el 80% (Engaño del as)
     if (roll(80) && sorted[0].p <= 7) return sorted[0].i;
     // Si tiene dos altas: tirar la más baja de las altas
     if (highCards.length >= 2) {
@@ -451,6 +481,7 @@ function decideAction(state, myCards, qvals, legal) {
 
   // ── RESPOND_ENVIT ─────────────────────────────────────────
   if (mode === 'respond_envit' && po?.kind === 'envit') {
+    if (humanScore >= 11) return 6; // vull siempre
     const level = po.level;
 
     // Falta
@@ -474,15 +505,26 @@ function decideAction(state, myCards, qvals, legal) {
     }
 
     // Aceptar o rechazar
-    if (roll(acceptEnvitProb(envPts))) return 6; // vull
+    if (roll(acceptEnvitProb(envPts, humanScore))) return 6; // vull
     return 7; // no_vull
   }
 
   // ── RESPOND_TRUC ──────────────────────────────────────────
   if (mode === 'respond_truc' && po?.kind === 'truc') {
-    const rp = retruqueProb(myCards, trucLevel);
-    const ap = acceptTrucProb(myCards, trucLevel);
+    if (humanScore >= 11) return 10; // vull siempre
+    const rp = retruqueProb(myCards, trucLevel, humanScore);
+    const ap = acceptTrucProb(myCards, trucLevel, humanScore);
     const hasBest = myCards.includes('1_espadas') || myCards.includes('1_bastos');
+
+    // ── Cruce de apuestas: Responder al Truc con Envit ──
+    if (legal.includes(3) && h.envitAvailable && h.envit?.state === 'none') {
+      if (envPts >= 29 && roll(65)) {
+        if (legal.includes(4) && envPts >= 32 && roll(50)) return 4; // falta
+        return 3; // envit
+      } else if (envPts <= 7 && roll(10)) {
+        return 3; // Farol defensivo
+      }
+    }
 
     if (trucLevel === 2 && roll(rp)) {
       if (hasBest || mp >= 11) _botWasBluffingTruc = false;
@@ -521,7 +563,7 @@ function decideAction(state, myCards, qvals, legal) {
         if (h.mano === BOT_SEAT) {
           trucProb = trucProbManoFirst(myCards, humanScore, botScore);
         } else if (rivalCard) {
-          trucProb = trucProbPostreFirst(rivalCard);
+          trucProb = trucProbPostreFirst(rivalCard, humanScore);
         }
       } else {
         // Segunda o tercera baza
@@ -545,7 +587,7 @@ function decideAction(state, myCards, qvals, legal) {
     }
     const cardIdx = chooseCardToPlay(myCards, rivalCard, h.mano === BOT_SEAT);
     const actionIdx = cardIdx; // PLAY_CARD[0,1,2]
-    if (legal.includes(actionIdx)) return actionIdx;
+    if (actionIdx !== null && actionIdx !== undefined && legal.includes(actionIdx)) return actionIdx;
     // Fallback: primera carta legal
     const playLegal = legal.filter(i => i <= 2);
     if (playLegal.length) return playLegal[0];
@@ -626,17 +668,19 @@ function buildActionMask(state, seat) {
   const nc = myCards.length;
   const alreadyPlayed = getPlayed(h, seat) !== null;
   if (mode === 'normal' && !po) {
-    if (!alreadyPlayed) for (let i = 0; i < nc; i++) mask[i] = 1.0;
-    if (h.envitAvailable && h.envit?.state === 'none') {
-      mask[3] = 1.0; mask[4] = 1.0;
+    if (!alreadyPlayed) {
+      for (let i = 0; i < nc; i++) mask[i] = 1.0;
+      if (h.envitAvailable && h.envit?.state === 'none') {
+        mask[3] = 1.0; mask[4] = 1.0;
+      }
+      const tr = h.truc;
+      let canTruc = true;
+      if (tr?.state === 'accepted') {
+        if (tr.responder !== seat) canTruc = false;
+        else if (Number(tr.acceptedLevel||2)+1 > 4) canTruc = false;
+      } else if (tr?.state !== 'none') canTruc = false;
+      if (canTruc && nc > 0) mask[5] = 1.0;
     }
-    const tr = h.truc;
-    let canTruc = true;
-    if (tr?.state === 'accepted') {
-      if (tr.responder !== seat) canTruc = false;
-      else if (Number(tr.acceptedLevel||2)+1 > 4) canTruc = false;
-    } else if (tr?.state !== 'none') canTruc = false;
-    if (canTruc && nc > 0) mask[5] = 1.0;
   } else if (mode === 'respond_envit' && po?.kind === 'envit') {
     mask[6] = 1.0; mask[7] = 1.0;
     if (po.level === 2) { mask[8] = 1.0; mask[9] = 1.0; }
@@ -687,6 +731,7 @@ export async function botAct(state) {
 
   // ── Fallback: RL ──────────────────────────────────────────
   if (!_ortSession) {
+    if (!legal.length) return null;
     const ri = legal[Math.floor(Math.random() * legal.length)];
     return ALL_ACTIONS[ri];
   }
@@ -703,6 +748,7 @@ export async function botAct(state) {
     return ALL_ACTIONS[bestIdx];
   } catch(e) {
     console.error('botAct RL error:', e);
+    if (!legal.length) return null;
     const ri = legal[Math.floor(Math.random() * legal.length)];
     return ALL_ACTIONS[ri];
   }

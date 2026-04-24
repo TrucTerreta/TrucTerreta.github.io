@@ -221,7 +221,17 @@ export function syncOfferBubblesFromState(state) {
   const txt = offerTextFromPendingOffer(pending);
   const mine = pending.by === session.mySeat;
   const targetId = mine ? "myBubble" : "rivalBubble";
-  _bubbleState[targetId].offerText = txt;
+  const st = _bubbleState[targetId];
+  st.offerText = txt;
+  const ph = String(st.phraseText || "").trim();
+  const ot = String(txt || "").trim();
+  if (ph && ot && ph === ot) {
+    if (st.phraseTimer) {
+      clearTimeout(st.phraseTimer);
+      st.phraseTimer = null;
+    }
+    st.phraseText = "";
+  }
   renderSpeechBubble("myBubble");
   renderSpeechBubble("rivalBubble");
 }
