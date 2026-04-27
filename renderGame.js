@@ -802,7 +802,8 @@ function renderTrick(state) {
       (betweenTimer != null ||
         _betweenCountdownLatch ||
         gameEndSummaryTimer != null ||
-        _gameEndSummaryLatch)
+        _gameEndSummaryLatch ||
+        state.status === "game_over")
     ) {
       return;
     }
@@ -1625,7 +1626,6 @@ export function renderAll(room) {
     stopBetween();
     stopTurnTimer();
     $("waitingOverlay").classList.add("hidden");
-    const wasHidden = $("gameOverOverlay").classList.contains("hidden");
     const animKey = `${session.roomCode}|${state.winner}|${getScore(state, session.mySeat)}-${getScore(state, other(session.mySeat))}|${state.logs?.[0]?.at ?? ""}|${state.gameEndReason || ""}`;
     const abandonment = state.gameEndReason === "abandonment";
     const showGameOverOverlay = () => {
@@ -1652,25 +1652,23 @@ export function renderAll(room) {
       }
       playGameOverPresentation(iWon);
     };
-    if (wasHidden) {
-      if (abandonment) {
-        stopGameEndSummary();
-        if (_gameOverPresentationScheduledFor !== animKey) {
-          _gameOverPresentationScheduledFor = animKey;
-          setTimeout(showGameOverOverlay, 3000);
-        }
-      } else {
-        if (_gameEndHandSummaryStartedFor !== animKey) {
-          _gameEndHandSummaryStartedFor = animKey;
-          startGameEndHandSummary(state, animKey);
-        }
-        if (
-          _gameEndHandSummaryDoneFor === animKey &&
-          _gameOverPresentationScheduledFor !== animKey
-        ) {
-          _gameOverPresentationScheduledFor = animKey;
-          setTimeout(showGameOverOverlay, 0);
-        }
+    if (abandonment) {
+      stopGameEndSummary();
+      if (_gameOverPresentationScheduledFor !== animKey) {
+        _gameOverPresentationScheduledFor = animKey;
+        setTimeout(showGameOverOverlay, 3000);
+      }
+    } else {
+      if (_gameEndHandSummaryStartedFor !== animKey) {
+        _gameEndHandSummaryStartedFor = animKey;
+        startGameEndHandSummary(state, animKey);
+      }
+      if (
+        _gameEndHandSummaryDoneFor === animKey &&
+        _gameOverPresentationScheduledFor !== animKey
+      ) {
+        _gameOverPresentationScheduledFor = animKey;
+        setTimeout(showGameOverOverlay, 0);
       }
     }
     renderRematchStatus(state);
