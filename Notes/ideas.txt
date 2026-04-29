@@ -83,3 +83,34 @@ Si quieres implementar esto poco a poco para no saturar tu base de datos de Fire
 Estadísticas Básicas en el Perfil: Partidas ganadas/perdidas, % de victorias.
 Un sistema de XP y Niveles simple (sin recompensas complejas todavía, solo el orgullo del nivel).
 Avatares (aunque sean 5 o 6 opciones básicas) para dar identidad.
+
+---
+
+Sonidos actuales y contexto de uso
+sndCard: suena al jugar una carta (clic en una carta válida de tu mano).
+sndTick: suena en cuentas atrás:
+en los últimos 5 segundos del turno;
+en la cuenta atrás entre manos (de 4 a 0, no suena en el “5” inicial).
+sndBtn: sonido de clic/acción de botón al pulsar acciones importantes:
+botones dinámicos de respuesta (Vull, No vull, Torne, etc.);
+Envit, Falta, Truc, Mazo;
+Start, Ready (host/guest), Back to main.
+sndPoint: sonido de puntuación/progreso de apuesta:
+al animar actualización de puntos en HUD;
+cuando un envit pasa a accepted;
+cuando un truc pasa a accepted.
+sndWin: suena al entrar en game_over si ganas.
+sndLose: suena al entrar en game_over si pierdes.
+Importante para elegir nuevos audios
+Hay un interruptor general en configuración: sound: true/false (config.js), y todos los sonidos lo respetan.
+Como guía de búsqueda, puedes pensar en 6 categorías:
+carta jugada,
+tic de urgencia,
+botón/confirmación UI,
+punto/apuesta aceptada,
+victoria,
+derrota.
+
+---
+
+spritesheet para optimizar carga imágenes (un solo archivo)
