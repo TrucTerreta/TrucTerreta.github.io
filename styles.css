@@ -4315,8 +4315,8 @@ body.btn-large #actionBtns {
   padding-top: 5px;
 }
 [data-mode="2v2"] .trick-col:nth-child(1) { z-index: 1; }
-[data-mode="2v2"] .trick-col:nth-child(2) { z-index: 2; margin-top: 28px; }
-[data-mode="2v2"] .trick-col:nth-child(3) { z-index: 3; margin-top: 56px; }
+[data-mode="2v2"] .trick-col:nth-child(2) { z-index: 2; margin-top: 6px; }
+[data-mode="2v2"] .trick-col:nth-child(3) { z-index: 3; margin-top: 12px; }
 /* Ombra superior per marcar la separació visual entre bazas apilades */
 [data-mode="2v2"] .trick-col:nth-child(n+2) {
   box-shadow: 0 -5px 10px rgba(0, 0, 0, 0.55);
@@ -4539,8 +4539,8 @@ body.btn-large #actionBtns {
     height: 60px;
   }
   /* Apilament 2v2 més ajustat en mòbil */
-  [data-mode="2v2"] .trick-col:nth-child(2) { margin-top: 20px; }
-  [data-mode="2v2"] .trick-col:nth-child(3) { margin-top: 40px; }
+  [data-mode="2v2"] .trick-col:nth-child(2) { margin-top: 5px; }
+  [data-mode="2v2"] .trick-col:nth-child(3) { margin-top: 10px; }
 }
 
 /* ── Responsive: tauleta (480–768 px) ── */

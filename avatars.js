@@ -332,8 +332,9 @@ export function renderWaitingSlots(room, state) {
 window.pickAvatar = pickAvatar;
 
 export function renderAvatars(room) {
+  const state = room?.state;
   const avs = room?.avatars || {};
-  const opps = opponents(session.mySeat);
+  const opps = opponents(session.mySeat, state);
   const rawRiv = opps.length > 0 ? avs[K(opps[0])] : null;
   _rivalAvatarIdx = drawingIndexFromFirebase(rawRiv);
   const myEl = document.getElementById("myAv");
@@ -345,7 +346,7 @@ export function renderAvatars(room) {
   // 2v2: renderitzar avatars del company i rival dret
   const tmEl = document.getElementById("teammateAv");
   const rrEl = document.getElementById("rivalRightAv");
-  const tms = teammates(session.mySeat).filter(s => s !== session.mySeat);
+  const tms = teammates(session.mySeat, state).filter(s => s !== session.mySeat);
   if (tmEl && tms.length > 0) {
     tmEl.innerHTML = avatarImgHtml(srcFromFirebaseAvatar(avs[K(tms[0])]));
   }
