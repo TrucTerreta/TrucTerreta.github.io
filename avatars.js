@@ -23,6 +23,7 @@ export const AVATAR_IMAGES = [
 ];
 export const GUEST_LOBBY_AVATAR =
   "Media/Images/Others/avatar-convidat.webp";
+export const BOT_AVATAR = "Media/Images/Avatars/avatar-robot.webp";
 
 /** @typedef {"g"|"guest"|number} AvatarChoice */
 
@@ -277,7 +278,9 @@ export function renderWaitingSlots(room, state) {
     if (!ph || !nm || !gav || !bd) continue;
 
     const sitBtn = document.getElementById(`waitSlotSitBtn${seat}`);
+    const changeAvBtn = document.getElementById(`waitSlotChangeAvatarBtn${seat}`);
     const is2v2 = numSeats === 4;
+    const isMySeat = session.mySeat === seat;
 
     const pl = state?.players?.[K(seat)];
     const pName = (st, s) =>
@@ -289,6 +292,8 @@ export function renderWaitingSlots(room, state) {
       nm.textContent = "—";
       gav.innerHTML = "";
       gav.classList.add("slot-game-av-empty");
+      gav.classList.remove("slot-game-av-is-mine");
+      if (changeAvBtn) changeAvBtn.classList.add("hidden");
       
       if (sitBtn && is2v2 && session.mySeat !== seat) {
         sitBtn.classList.remove("hidden");
@@ -309,6 +314,8 @@ export function renderWaitingSlots(room, state) {
     nm.textContent = pName(state, seat);
     ph.src = pl.photoURL || GUEST_LOBBY_AVATAR;
     ph.alt = pName(state, seat);
+    gav.classList.toggle("slot-game-av-is-mine", isMySeat);
+    if (changeAvBtn) changeAvBtn.classList.toggle("hidden", !isMySeat);
 
     const src =
       session.mySeat === seat ? srcSelf : srcFromFirebaseAvatar(avs[K(seat)]);

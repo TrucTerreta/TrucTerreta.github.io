@@ -13,7 +13,7 @@ import {
 } from "./firebase.js";
 import { defaultState, buildDefaultState } from "./acciones.js";
 import * as Logica from "./logica.js";
-import { GUEST_LOBBY_AVATAR } from "./avatars.js";
+import { GUEST_LOBBY_AVATAR, BOT_AVATAR, firebaseValueForChoice } from "./avatars.js";
 import { auth } from "./firebase.js";
 import { initBot, setBotActive, resetBotMemory } from "./bot.js";
 
@@ -278,6 +278,7 @@ export async function createRoomAsBot(name) {
     name: botName,
     clientId: uid(),
     guest: true,
+    photoURL: BOT_AVATAR,
   };
   init.ready = init.ready || {};
   init.ready[K(0)] = true;
@@ -288,6 +289,10 @@ export async function createRoomAsBot(name) {
     meta: { createdAt: Date.now(), roomCode: code, visibility: vis },
     settings,
     state: init,
+    avatars: {
+      [K(0)]: firebaseValueForChoice(0),
+      [K(1)]: BOT_AVATAR,
+    },
     lastActivity: Date.now(),
   });
 

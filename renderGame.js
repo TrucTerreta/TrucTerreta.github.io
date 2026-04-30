@@ -912,6 +912,71 @@ function _renderTrickGrid(allTricks, playedMap, numSeats, didRivalJustPlay = fal
   const hasCurrent = Object.values(playedMap || {}).some(Boolean);
   if (allTricks.length === 0 && !hasCurrent) return;
 
+  // 2v2: apilar por jugador (cada seat tiene su propio montón)
+  if (numSeats === 4) {
+    const piles = document.createElement("div");
+    piles.className = "trick-piles-4p";
+
+    const tmSeat = (me + 2) % 4;
+    const [rivalR, rivalL] = _ccwRivals(me);
+    const positions = [
+      { seat: tmSeat, cls: "trick-pos-top" },
+      { seat: rivalL, cls: "trick-pos-left" },
+      { seat: rivalR, cls: "trick-pos-right" },
+      { seat: me, cls: "trick-pos-bottom" },
+    ];
+
+    const seatCards = new Map();
+    for (const { seat } of positions) seatCards.set(seat, []);
+
+    allTricks.forEach((t) => {
+      for (const { seat } of positions) {
+        const code = _trickCardForSeat(t, seat);
+        if (!code || code === EMPTY_CARD) continue;
+        const isDraw = t.w === 99 || t.w === null || t.w === undefined;
+        const won = !isDraw && teamOf(seat) === t.w;
+        seatCards.get(seat).push({ code, won, isCurrent: false });
+      }
+    });
+
+    if (hasCurrent) {
+      for (const { seat } of positions) {
+        const code = playedMap?.[seat];
+        if (!code || code === EMPTY_CARD) continue;
+        seatCards.get(seat).push({ code, won: false, isCurrent: true });
+      }
+    }
+
+    for (const { seat, cls } of positions) {
+      const pile = document.createElement("div");
+      pile.className = `trick-pile ${cls}`;
+      const cards = seatCards.get(seat) || [];
+
+      cards.forEach((entry, idx) => {
+        const el = buildCard(entry.code);
+        el.classList.add("trick-pile-card");
+        el.style.zIndex = String(idx + 1);
+        el.style.top = `${idx * 6}px`;
+
+        if (entry.won) el.classList.add("trick-winner");
+        globalThis.gsap?.set(el, { rotationX: 25, transformPerspective: 400 });
+
+        if (entry.isCurrent) {
+          const isRival = teamOf(seat) !== myTeam;
+          if (didRivalJustPlay && isRival) animateRivalPlay(el);
+          else el.classList.add("land-anim");
+        }
+
+        pile.appendChild(el);
+      });
+
+      piles.appendChild(pile);
+    }
+
+    grid.appendChild(piles);
+    return;
+  }
+
   // Helper: construeix una columna de basa
   const buildTrickCol = (getCard, winner, isCurrent, justPlayed) => {
     const col = document.createElement("div");
@@ -1502,8 +1567,12 @@ function updateRivalTimer(state) {
 function renderHUD(state) {
   const hideCode = session.roomVisibility === "public";
   $("hudRoom").textContent = hideCode
-    ? "Sala p\u00fablica"
+    ? ""
     : `Sala ${session.roomCode || "-"}`;
+  const puntosObjetivo =
+    Number(state?.settings?.puntosParaGanar) === 24 ? 24 : 12;
+  $("hudTarget").textContent = `🎯 ${puntosObjetivo} pedres`;
+  $("hudNick").textContent = `👤 ${pName(state, session.mySeat)}`;
 
   const myTeam = teamOf(session.mySeat);
   const rivTeam = myTeam === 0 ? 1 : 0;
@@ -1694,6 +1763,15 @@ function renderRematchStatus(state) {
 // --- RENDER PRINCIPAL --------------------------------------------------------
 export function renderAll(room) {
   const state = room?.state || defaultState();
+  const hideChatVsBot = isBotActive();
+  const gameChatPanel = $("chatPanel");
+  const waitingChatPanel = $("lobbyChatPanel");
+  if (gameChatPanel) gameChatPanel.classList.toggle("hidden", hideChatVsBot);
+  if (waitingChatPanel) waitingChatPanel.classList.toggle("hidden", hideChatVsBot);
+  if (hideChatVsBot) {
+    $("chatBox")?.classList.add("hidden");
+    $("chatBadge")?.classList.add("hidden");
+  }
   if (_prevStatus === "waiting" && state.status === "playing") {
     _introPlayed = false;
   }

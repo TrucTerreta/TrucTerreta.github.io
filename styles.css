@@ -2349,6 +2349,7 @@ body {
 }
 
 .player-wait-slot {
+  position: relative;
   background: linear-gradient(
     165deg,
     rgba(42, 26, 12, 0.94) 0%,
@@ -2460,6 +2461,35 @@ body {
     transparent 7px
   );
 }
+.slot-game-av-clickable {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.slot-game-av-is-mine {
+  cursor: pointer;
+  border-color: rgba(232, 171, 42, 0.62);
+  box-shadow: 0 0 0 2px rgba(232, 171, 42, 0.24);
+}
+.slot-game-av-is-mine:hover {
+  transform: scale(1.03);
+}
+.slot-change-avatar-btn {
+  position: relative;
+  margin-top: clamp(-2px, -0.4vmin, 0px);
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f8d56d, #e8ab2a);
+  color: #2d1e00;
+  font-weight: 900;
+  font-size: clamp(9px, 1.9vmin, 11px);
+  padding: clamp(2px, 0.5vmin, 4px) clamp(8px, 1.8vmin, 10px);
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.35);
+}
+.slot-change-avatar-btn:hover {
+  filter: brightness(1.05);
+}
 
 .slot-badge {
   font-size: 12px;
@@ -2500,15 +2530,24 @@ body {
 
 .waiting-vs {
   align-self: center;
-  font-size: 22px;
+  font-size: 34px;
   font-weight: 900;
   color: rgba(232, 171, 42, 0.92);
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
-  padding: 0 6px;
+  text-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(232, 171, 42, 0.3);
+  padding: 0 10px;
 }
 #waitingOverlay .waiting-vs {
-  font-size: clamp(14px, 3.5vmin, 20px);
-  padding: 0 clamp(4px, 1vmin, 8px);
+  font-size: clamp(24px, 5.6vmin, 40px);
+  padding: 0 clamp(6px, 1.4vmin, 12px);
+}
+.waiting-vs-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 1.5vmin, 12px);
 }
 
 .waiting-actions {
@@ -2537,10 +2576,10 @@ body {
 }
 
 #waitingInviteWhatsappBtn.waiting-invite-side-btn {
-  position: absolute;
-  top: 50%;
-  right: clamp(12px, 2.6vmin, 20px);
-  transform: translateY(-50%);
+  position: relative;
+  top: auto;
+  right: auto;
+  transform: none;
   width: clamp(36px, 7.5vmin, 44px);
   height: clamp(36px, 7.5vmin, 44px);
   min-width: 0;
@@ -2657,17 +2696,39 @@ body {
   #slot-player-1 {
     order: 3;
   }
-  #slot-player-1 {
-    padding-right: clamp(62px, 18vw, 86px);
-  }
-  #waitingInviteWhatsappBtn.waiting-invite-side-btn {
-    right: clamp(12px, 4vw, 18px);
-  }
   .waiting-invite-side-text {
     right: 0;
     transform: none;
     width: clamp(52px, 16vw, 66px);
     font-size: 9px;
+  }
+}
+
+#avatarPickerModal:not(.hidden) .create-room-backdrop {
+  animation: avatarModalBackdropIn 240ms ease-out both;
+}
+#avatarPickerModal:not(.hidden) .avatar-picker-panel {
+  animation: avatarModalPanelIn 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: 50% 20%;
+}
+@keyframes avatarModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes avatarModalPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.94);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -3087,6 +3148,15 @@ body {
   border: 4px solid gold !important;
   box-shadow: 0 0 15px rgba(232, 171, 42, 0.6) !important;
   transform: scale(1.05);
+}
+.avatar-picker-panel {
+  max-width: min(420px, 92vw);
+}
+.avatar-pick-modal {
+  margin-bottom: 8px;
+}
+.avatar-pick-modal .avatar-options {
+  margin-top: 4px !important;
 }
 
 /* Avatar a la taula (petit) */
@@ -4299,28 +4369,33 @@ body.btn-large #actionBtns {
   }
 }
 
-/* ── 2v2: bazas apilades (2a i 3a sobreposades a la 1a) ── */
+/* ── 2v2: un montón por jugador (cartas propias apiladas) ── */
 [data-mode="2v2"] .trick-grid {
-  display: grid;
-  grid-template-columns: auto;
-  grid-template-rows: auto;
-  align-items: start;
-  justify-items: center;
-  gap: 0;
   min-height: unset;
 }
-[data-mode="2v2"] .trick-col {
-  grid-row: 1;
-  grid-column: 1;
-  padding-top: 5px;
+[data-mode="2v2"] .trick-piles-4p {
+  display: grid;
+  grid-template-areas:
+    ". top ."
+    "left . right"
+    ". bottom .";
+  grid-template-columns: auto auto auto;
+  grid-template-rows: auto auto auto;
+  gap: 6px;
+  align-items: center;
+  justify-items: center;
 }
-[data-mode="2v2"] .trick-col:nth-child(1) { z-index: 1; }
-[data-mode="2v2"] .trick-col:nth-child(2) { z-index: 2; margin-top: 6px; }
-[data-mode="2v2"] .trick-col:nth-child(3) { z-index: 3; margin-top: 12px; }
-/* Ombra superior per marcar la separació visual entre bazas apilades */
-[data-mode="2v2"] .trick-col:nth-child(n+2) {
-  box-shadow: 0 -5px 10px rgba(0, 0, 0, 0.55);
-  border-radius: 8px;
+[data-mode="2v2"] .trick-pile {
+  position: relative;
+  width: 72px;
+  height: 118px;
+}
+[data-mode="2v2"] .trick-pile .trick-pile-card {
+  position: absolute;
+  left: 0;
+}
+[data-mode="2v2"] .trick-pile .trick-pile-card:not(:last-child) {
+  box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.45);
 }
 
 /* ── Waiting overlay 2v2 ── */
@@ -4516,11 +4591,14 @@ body.btn-large #actionBtns {
     padding: 4px 2px;
   }
   .side-cards {
-    width: 44px;
+    width: 40px;
   }
   .side-cards .card-back {
-    width: 40px;
-    height: 60px;
+    width: 34px;
+    height: 51px;
+  }
+  .side-cards .rival-card-slot {
+    margin-top: -20px !important;
   }
   .side-player-header .player-name {
     font-size: 10px !important;
@@ -4538,9 +4616,10 @@ body.btn-large #actionBtns {
     width: 40px;
     height: 60px;
   }
-  /* Apilament 2v2 més ajustat en mòbil */
-  [data-mode="2v2"] .trick-col:nth-child(2) { margin-top: 5px; }
-  [data-mode="2v2"] .trick-col:nth-child(3) { margin-top: 10px; }
+  [data-mode="2v2"] .trick-pile {
+    width: 40px;
+    height: 82px;
+  }
 }
 
 /* ── Responsive: tauleta (480–768 px) ── */
@@ -4548,6 +4627,16 @@ body.btn-large #actionBtns {
   #table.table-2v2 {
     grid-template-columns: minmax(64px, 100px) 1fr minmax(64px, 100px);
     gap: 5px 3px;
+  }
+  .side-cards {
+    width: 48px;
+  }
+  .side-cards .card-back {
+    width: 38px;
+    height: 57px;
+  }
+  .side-cards .rival-card-slot {
+    margin-top: -22px !important;
   }
   .trick-col-4p .playing-card {
     width: 56px;

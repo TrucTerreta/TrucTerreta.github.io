@@ -735,6 +735,27 @@ export function initApp() {
       closeLobbyEmojiPicker();
     }
   });
+  const avatarPickerModal = $("avatarPickerModal");
+  const avatarPickerBackdrop = $("avatarPickerModalBackdrop");
+  const avatarPickerClose = $("avatarPickerModalClose");
+  const openAvatarPickerModal = () => {
+    if (!avatarPickerModal) return;
+    avatarPickerModal.classList.remove("hidden");
+    avatarPickerModal.setAttribute("aria-hidden", "false");
+  };
+  const closeAvatarPickerModal = () => {
+    if (!avatarPickerModal) return;
+    avatarPickerModal.classList.add("hidden");
+    avatarPickerModal.setAttribute("aria-hidden", "true");
+  };
+  avatarPickerClose?.addEventListener("click", closeAvatarPickerModal);
+  avatarPickerBackdrop?.addEventListener("click", closeAvatarPickerModal);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && avatarPickerModal && !avatarPickerModal.classList.contains("hidden")) {
+      closeAvatarPickerModal();
+    }
+  });
+
   document.querySelectorAll(".av-opt").forEach((el) => {
     el.addEventListener("click", () => {
       const raw = el.dataset.av;
@@ -744,7 +765,18 @@ export function initApp() {
         const i = Number(raw);
         if (Number.isFinite(i)) pickAvatar(i);
       }
+      closeAvatarPickerModal();
     });
+  });
+  [0, 1, 2, 3].forEach((seatIndex) => {
+    const btn = document.getElementById(`waitSlotChangeAvatarBtn${seatIndex}`);
+    const av = document.getElementById(`waitSlotGameAv${seatIndex}`);
+    const openIfMine = () => {
+      if (session.mySeat !== seatIndex) return;
+      openAvatarPickerModal();
+    };
+    btn?.addEventListener("click", openIfMine);
+    av?.addEventListener("click", openIfMine);
   });
   
   // Botons "Sentar-se ací" per al 2v2
