@@ -324,14 +324,17 @@ function _startOfferCore(state, seat, kind) {
   if (Logica.mustPlayCardOnlyThisTrick(h, seat)) return false;
 
   if (kind === "envit" || kind === "falta") {
-    if (h.mode !== "normal") return false;
     if (!h.envitAvailable || h.envit.state !== "none") return false;
     const tricksDone = (h.trickHistory || []).length;
     if (tricksDone !== 0) return false;
     if (alreadyPlayed(h, seat)) return false;
-    const noTrucAtAll =
-      h.truc.state === "none" && !(h.pendingOffer?.kind === "truc");
-    if (!noTrucAtAll) return false;
+    // Permite envit en modo normal (sin truc) O cuando se está respondiendo a un truc
+    const inNormalMode = h.mode === "normal" && h.truc.state === "none" && !h.pendingOffer;
+    const respondingToTruc =
+      h.mode === "respond_truc" &&
+      h.pendingOffer?.kind === "truc" &&
+      h.pendingOffer?.to === seat;
+    if (!inNormalMode && !respondingToTruc) return false;
 
     const level = kind === "falta" ? "falta" : 2;
     const toSeat = _respondingSeat(state, seat);
@@ -362,6 +365,7 @@ function _startOfferCore(state, seat, kind) {
     if (h.truc.state === "accepted" && h.truc.responder === seat) {
       trucLevel = Number(h.truc.acceptedLevel || 2) + 1;
       if (trucLevel > 4) return false;
+      if ((h.trickHistory || []).length <= (h.truc.acceptedAtTrick ?? -1)) return false;
     } else if (h.truc.state !== "none") return false;
 
     const toSeat = _respondingSeat(state, seat);
@@ -378,7 +382,29 @@ function _startOfferCore(state, seat, kind) {
     };
     h.mode = "respond_truc";
     h.turn = toSeat;
-    h.envitAvailable = false;
+
+    // Determinar si el equipo respondedor puede aún envidar:
+    // - no se ha hecho ninguna baza
+    // - no hay envit previo
+    // - 1v1: el respondedor no ha jugado carta
+    // - 2v2: al menos un miembro del equipo respondedor no ha jugado carta
+    const tricksDoneNow = (h.trickHistory || []).length;
+    let respCanEnvit = false;
+    if (h.envit.state === "none" && tricksDoneNow === 0) {
+      const n = h.numSeats || 2;
+      if (n <= 2) {
+        respCanEnvit = !alreadyPlayed(h, toSeat);
+      } else {
+        const respTeam = teamOf(toSeat);
+        for (let i = 0; i < n; i++) {
+          if (i % 2 === respTeam && !alreadyPlayed(h, i)) {
+            respCanEnvit = true;
+            break;
+          }
+        }
+      }
+    }
+    h.envitAvailable = respCanEnvit;
 
     const nom = state.players?.[K(seat)]?.name || `J${seat}`;
     pushLog(state, `${nom} canta truc.`);
@@ -538,6 +564,7 @@ function _respondTrucCore(state, seat, choice) {
       responder: resp,
       acceptedLevel: offer.level,
       acceptedBy: seat,
+      acceptedAtTrick: (h.trickHistory || []).length,
     };
     h.envitAvailable = false;
     pushLog(state, `Truc acceptat (${offer.level}).`);

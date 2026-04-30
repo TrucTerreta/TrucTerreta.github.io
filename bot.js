@@ -670,6 +670,7 @@ function buildActionMask(state, seat) {
       if (tr?.state === 'accepted') {
         if (tr.responder !== seat) canTruc = false;
         else if (Number(tr.acceptedLevel||2)+1 > 4) canTruc = false;
+        else if ((h.trickHistory||[]).length <= (tr.acceptedAtTrick ?? -1)) canTruc = false;
       } else if (tr?.state !== 'none') canTruc = false;
       if (!noOffersMatada && canTruc && nc > 0) mask[5] = 1.0;
     }

@@ -1307,6 +1307,11 @@ function renderActions(state) {
         add("Retruque", "btn-truc-2", () => respondTruc("retruque"));
       if (h.pendingOffer.level === 3)
         add("Val 4", "btn-truc-3", () => respondTruc("val4"));
+      // Opció d'envidar en resposta al truc (si l'equip respondedor encara pot envidar)
+      if (h.envitAvailable && h.envit.state === "none") {
+        add("Envit", "btn-envit-1", () => startOffer("envit"));
+        add("Falta", "btn-envit-3", () => startOffer("falta"));
+      }
     } else {
       ra.classList.add("hidden");
       om.classList.add("hidden");
@@ -1326,7 +1331,10 @@ function renderActions(state) {
         const trucNone = h.truc.state === "none";
         const iAccepted =
           h.truc.state === "accepted" && h.truc.acceptedBy === session.mySeat;
-        const canEscalate = iAccepted && Number(h.truc.acceptedLevel || 0) < 4;
+        const canEscalate =
+          iAccepted &&
+          Number(h.truc.acceptedLevel || 0) < 4 &&
+          (h.trickHistory || []).length > (h.truc.acceptedAtTrick ?? -1);
         if (trucNone || canEscalate) {
           const tb = $("trucBtn");
           if (tb) {
